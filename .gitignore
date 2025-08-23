@@ -1,0 +1,22 @@
+#-*- mode: gitignore -*-
+
+# System files
+.DS_Store
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# venv
+/venv/
+
+# Environment variables
+.env
+
+# Cache files
+.cache/
+
+# Output files
+*.mp3
+*.png

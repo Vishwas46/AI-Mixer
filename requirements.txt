@@ -1,0 +1,8 @@
+spotipy
+python-dotenv
+numpy
+soundfile
+librosa
+pyrubberband
+pydub
+demucs
