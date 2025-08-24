@@ -3,7 +3,7 @@
 import argparse
 import os
 import sys
-from spotify_client import analyze_audio_local
+from audio_analyzer import analyze_audio_local
 from remix_engine import build_remix
 
 def main():

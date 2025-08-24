@@ -11,8 +11,6 @@ This project uses a virtual environment (`venv`) to manage dependencies. The mai
 *   `pydub`: For audio manipulation and effects.
 *   `numpy`: For numerical operations.
 *   `soundfile`: For reading and writing audio files.
-*   `spotipy`: For interacting with the Spotify API.
-*   `python-dotenv`: For managing environment variables.
 
 All dependencies are listed in the `requirements.txt` file and can be installed by running:
 ```bash
@@ -21,18 +19,31 @@ All dependencies are listed in the `requirements.txt` file and can be installed 
 
 ## Usage
 
-The script is run from the command line. You need to provide the paths to the two local audio files you want to remix, as well as the names of the songs for the Spotify API to fetch the metadata.
+The script can be used in two main ways: for creating a single mashup or for acting as an "AI DJ Assistant" to create a series of compatible mashups from a larger collection of songs.
+
+### Single Mashup
+
+The script is run from the command line. You need to provide the paths to the two local audio files you want to remix.
 
 ```bash
-/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/python creative_remix.py song1.mp3 song2.mp3 --songA-name "Artist - Song Title" --songB-name "Another Artist - Another Song Title"
+/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/python creative_remix.py song1.mp3 song2.mp3
 ```
+
+### AI DJ Assistant Workflow
+
+For a more advanced use case, the project can analyze a directory of songs and help you create a series of harmonically and rhythmically compatible mashups, similar to how a DJ plans a set.
+
+1.  **Place Songs:** Add all your `.mp3` files to the `songs/` directory.
+2.  **Analyze and Plan:** The AI assistant will analyze each song to determine its BPM and musical key.
+3.  **Generate Mashups:** Based on this analysis, the assistant will propose a series of high-quality mashup pairs.
+4.  **Output:** The generated mashups and a `README.md` file documenting the process will be saved in the `remix_outputs/` directory.
 
 ### Two-Way Remixing
 
 By default, the script takes the vocals from song A and the instrumental from song B. You can reverse this by using the `--vocals-from` argument:
 
 ```bash
-/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/python creative_remix.py songA.mp3 songB.mp3 --songA-name "Artist - Song Title" --songB-name "Another Artist - Another Song Title" --vocals-from B
+/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/python creative_remix.py songA.mp3 songB.mp3 --vocals-from B
 ```
 
 ### Remix Styles
@@ -42,32 +53,33 @@ The script supports different remixing styles using the `--remix-style` argument
 *   `full` (default): Creates a single remix with vocals from one song and instrumental from the other.
 *   `verse-chorus`: Creates a dynamic remix where the vocals and instrumental switch between the two songs at one-minute intervals.
 
-## Spotify API Integration
+## Core Technology: Local-First Audio Analysis
 
-This project has been updated to use the Spotify API to fetch accurate BPM and key information for the songs being remixed. This should result in higher-quality remixes.
+This project relies on local audio analysis and does not require any external APIs.
 
-### Known Issues
+*   **Audio Analysis:** The `audio_analyzer.py` script uses the `librosa` library to analyze local audio files and extract their BPM and musical key. This is the core of the project's ability to create harmonically compatible mashups.
+*   **Source Separation:** The project uses `demucs` to separate the vocals and instrumentals from the source tracks.
 
-There is currently a persistent "403 Forbidden" error when trying to connect to the Spotify API. This issue persists even after extensive troubleshooting, including:
+### Design Choice: Why Local Analysis?
 
-*   Verifying the code and authentication flow.
-*   Regenerating API credentials multiple times.
-*   Recreating the application on the Spotify Developer Dashboard.
-*   Clearing the token cache.
-*   Adding the user to the application's "Users and Access" list.
+The project was initially designed to use the Spotify API to fetch song metadata. However, due to persistent and unresolvable "403 Forbidden" errors with the API, a decision was made to pivot to a more robust, local-first approach.
 
-This suggests the issue may be with the Spotify account or an issue on Spotify's end.
+**Advantages of Local Analysis:**
 
-**Workaround:** Due to this, the project has been updated to use a manual approach for audio analysis. For more details, see the `GEMINI.md` file.
+*   **Reliability:** The tool is not dependent on an external service that may have authentication issues, rate limits, or downtime.
+*   **Privacy:** No data about your local music library is sent to a third party.
+*   **Flexibility:** The tool can be used with any audio file, not just those available on Spotify.
+
+This change makes the AI-Mixer a more resilient and self-contained application.
 
 ## File Descriptions
 
-*   `creative_remix.py`: The main Python script that creates the remix. It handles source separation, audio analysis (using the Spotify API), alignment, and mixing.
+*   `creative_remix.py`: The main Python script that orchestrates the remixing process.
+*   `audio_analyzer.py`: A utility script that handles local audio analysis (BPM, key).
+*   `remix_engine.py`: The core engine that handles the actual remixing, including source separation, alignment, and mixing.
 *   `visualize_alignment.py`: A utility script to generate a plot that visually compares the beat alignment of two different remix versions.
-*   `plot_alignment_error.py`: Another utility script that generates a plot to compare the beat alignment *error* of two different remix versions, providing a more quantitative analysis.
-*   `song1.mp3` and `song2.mp3`: The two input audio files used for the remix.
+*   `plot_alignment_error.py`: Another utility script that generates a plot to compare the beat alignment *error* of two different remix versions.
 *   `requirements.txt`: A list of all the Python dependencies for the project.
-*   `.env`: A file to store the Spotify API credentials (`SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET`).
 
 ## Inspiration
 
