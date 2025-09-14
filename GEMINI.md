@@ -28,6 +28,30 @@ This local-first model was successfully put to the test in a guided "AI DJ Assis
     3.  **Generation:** The `creative_remix.py` script was used to generate three unique mashups.
 *   **Outcome:** The session was successful, proving the viability and effectiveness of the local-first approach.
 
+## Project Expansion: Continuous Mix and Quality Analysis
+
+The project was expanded to include capabilities for analyzing the quality of the generated remixes and for creating continuous DJ-style mixes from multiple tracks.
+
+### Remix Quality Analysis
+
+A new script, `analyze_remix_quality.py`, was created to provide a quantitative measure of the quality of the mashups.
+
+*   **Problem:** While the existing remixes were musically interesting, it was difficult to objectively assess their technical quality. The key factor in a good mashup is the precise alignment of the vocals with the beat of the instrumental track.
+*   **Process:**
+    1.  The `analyze_remix_quality.py` script takes a final remixed audio file as input.
+    2.  It uses Demucs to perform source separation on the remix, isolating the vocals and the drums.
+    3.  It then uses `librosa` to perform beat tracking on both the vocal and drum stems.
+    4.  Finally, it calculates the average time difference (alignment error) between the vocal beats and the drum beats.
+*   **Findings:** Analysis of the three existing remixes revealed an average alignment error of over 100ms, which is classified as "Poor." This indicates that the simple time-stretching based on a single BPM value is not sufficient to maintain tight synchronization, and the vocals are likely to sound off-beat.
+
+### Continuous DJ Mix
+
+To further enhance the project's capabilities, a tool for creating continuous mixes was developed.
+
+*   **Goal:** To combine multiple individual remixes into a single, seamless audio file, simulating a DJ set.
+*   **Implementation:** A new script, `create_continuous_mix.py`, was created. This script was developed separately from `creative_remix.py` to maintain a clear separation of concerns, as its function (combining existing files) is distinct from the core remixing process.
+*   **Functionality:** The script takes a list of audio files as input, creates a new directory in `remix_outputs/` named with the current date, and then uses `pydub` to join the tracks together with a smooth 5-second crossfade between each one. The final output is saved as `continuous_dj_mix.mp3`.
+
 ## Building and Running
 
 ### 1. Setup and Installation
@@ -40,13 +64,57 @@ The project uses a Python virtual environment (`venv`) to manage its dependencie
 /Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/pip install -r requirements.txt
 ```
 
-### 2. Running the Remix Script
+### 2. Running the Script
 
-**Basic Usage:**
+The `creative_remix.py` script can be run in two modes.
+
+**A) Single Mashup Mode**
+
+This mode creates a standard mashup of two songs.
 
 ```bash
-/Users/vishwas/Documents/workspace/AI--Mixer/venv/bin/python creative_remix.py song1.mp3 song2.mp3
+/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/python creative_remix.py --mode single_mashup --songA_path <path_to_song_A> --songB_path <path_to_song_B>
 ```
+
+**B) AI DJ Set Mode**
+
+This mode analyzes all songs in a directory, caches the analysis, curates a musically compatible setlist, and generates a final, continuous DJ mix. It supports three distinct styles using the `--mix-style` flag.
+
+```bash
+# Generate a standard, full-length DJ mix
+/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/python creative_remix.py --mode dj_set --mix_style relaxed
+
+# Generate a fast-paced "highlight reel" mix
+/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/python creative_remix.py --mode dj_set --mix_style energetic
+
+# Generate a professional-style mix with phrase matching
+/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/python creative_remix.py --mode dj_set --mix_style pro
+```
+
+*   **Relaxed Style (Default):** This mode uses the full length of each song, creating a traditional DJ set with a simple, beat-aware volume crossfade between tracks.
+*   **Energetic Style:** This mode creates a high-intensity "megamix" by finding the most energetic 50% of each song and mixing those clips.
+*   **Pro Style:** This is the most advanced mode. It performs a deep structural analysis to find the natural intro and outro of each song. It then attempts to perform a "phrase match" by seamlessly crossfading the outro of one song with the intro of the next. If the song structures aren't suitable for a clean phrase match, it automatically falls back to a standard beat-matched crossfade to ensure a smooth mix.
+
+If `--songs_dir` is not provided, it defaults to the `songs/` directory. The final mix is saved with a timestamp and the mix style in the `remix_outputs/` folder.
+
+### Example AI-Generated DJ Set
+
+To illustrate the process, the AI was tasked with creating a set from a directory of 11 electronic music tracks.
+
+1.  **Analysis:** The script first analyzed all 11 tracks for energy, BPM, and musical key, using the cached results to save time.
+2.  **Curation:** It then curated a 6-track setlist. The process started by selecting the track with the lowest energy (`Darude - Sandstorm`) and then iteratively adding the most musically compatible song until the set was complete.
+3.  **Mixing:** The script generated a continuous MP3 file, creating beat-aware transitions between each track. For example, the 14.1-second outro of `Sandstorm` was crossfaded with the intro of `Age of Love`.
+
+**The final curated setlist was:**
+
+1.  `Darude - Sandstorm` (136.0 BPM, E:min)
+2.  `Age Of Love - The Age Of Love (Remix)` (136.0 BPM, F#:min)
+3.  `Faithless - Insomnia` (129.2 BPM, B:min)
+4.  `Swedish House Mafia - Don't You Worry Child` (129.2 BPM, D:maj)
+5.  `Avicii - Levels` (123.0 BPM, E:maj)
+6.  `Daft Punk - One More Time` (123.0 BPM, D:maj)
+
+This entire process, thanks to the analysis cache, took only a few seconds to execute.
 
 ## Development Conventions
 

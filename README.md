@@ -19,39 +19,51 @@ All dependencies are listed in the `requirements.txt` file and can be installed 
 
 ## Usage
 
-The script can be used in two main ways: for creating a single mashup or for acting as an "AI DJ Assistant" to create a series of compatible mashups from a larger collection of songs.
+The main script, `creative_remix.py`, operates in two modes, specified with the `--mode` flag.
 
-### Single Mashup
+### 1. Single Mashup Mode (`--mode single_mashup`)
 
-The script is run from the command line. You need to provide the paths to the two local audio files you want to remix.
-
-```bash
-/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/python creative_remix.py song1.mp3 song2.mp3
-```
-
-### AI DJ Assistant Workflow
-
-For a more advanced use case, the project can analyze a directory of songs and help you create a series of harmonically and rhythmically compatible mashups, similar to how a DJ plans a set.
-
-1.  **Place Songs:** Add all your `.mp3` files to the `songs/` directory.
-2.  **Analyze and Plan:** The AI assistant will analyze each song to determine its BPM and musical key.
-3.  **Generate Mashups:** Based on this analysis, the assistant will propose a series of high-quality mashup pairs.
-4.  **Output:** The generated mashups and a `README.md` file documenting the process will be saved in the `remix_outputs/` directory.
-
-### Two-Way Remixing
-
-By default, the script takes the vocals from song A and the instrumental from song B. You can reverse this by using the `--vocals-from` argument:
+This mode creates a classic mashup from two songs, taking the vocals from one and the instrumental from the other.
 
 ```bash
-/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/python creative_remix.py songA.mp3 songB.mp3 --vocals-from B
+# Basic usage (vocals from songA, instrumental from songB)
+/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/python creative_remix.py --mode single_mashup --songA_path songA.mp3 --songB_path songB.mp3
+
+# Specify a different output file
+/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/python creative_remix.py --mode single_mashup --songA_path songA.mp3 --songB_path songB.mp3 --out my_remix.mp3
 ```
 
-### Remix Styles
+### 2. AI DJ Set Mode (`--mode dj_set`)
 
-The script supports different remixing styles using the `--remix-style` argument:
+This is the most powerful feature. The script analyzes an entire directory of songs and automatically generates a continuous, multi-song DJ mix. It can create two different styles of mix using the `--mix_style` flag.
 
-*   `full` (default): Creates a single remix with vocals from one song and instrumental from the other.
-*   `verse-chorus`: Creates a dynamic remix where the vocals and instrumental switch between the two songs at one-minute intervals.
+**Workflow:**
+1.  **Analyze:** The script performs a deep analysis of all songs in a directory to find their BPM, key, energy, and vocal presence. This analysis is cached in `analysis_cache.json` to make subsequent runs much faster.
+2.  **Curate:** It then acts as an AI DJ, selecting the lowest-energy track to start and building a musically compatible setlist based on harmonic mixing, tempo, and energy flow.
+3.  **Mix:** Finally, it generates a single MP3 file of the complete set, with each track seamlessly crossfaded into the next.
+
+**How to Run:**
+```bash
+# Generate a standard, full-length DJ mix (relaxed style)
+/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/python creative_remix.py --mode dj_set --mix_style relaxed
+
+# Generate a fast-paced "highlight reel" mix (energetic style)
+/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/python creative_remix.py --mode dj_set --mix_style energetic
+
+# Use a different directory of songs
+/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/python creative_remix.py --mode dj_set --songs_dir /path/to/my/music
+```
+
+**Mix Styles:**
+*   `relaxed` (Default): This mode uses the full length of each song to create a traditional DJ set with a simple, beat-aware volume crossfade.
+*   `energetic` (Pro Mix): This mode creates a high-intensity "megamix" using professional DJ techniques. It automatically finds the most energetic 50% of each track, then seamlessly mixes these clips by:
+    *   **Tempo Synchronizing:** Perfectly matching the BPM of the incoming track to the outgoing track.
+    *   **EQ Mixing:** Performing a "bass swap" to ensure a clean, powerful transition without clashing frequencies.
+
+The final mix is saved with a timestamp in the `remix_outputs/` directory.
+
+---
+*Note: The `create_continuous_mix.py` script is still available for manually stitching together audio files, but the AI DJ mode provides a more intelligent, automated solution.*
 
 ## Core Technology: Local-First Audio Analysis
 
