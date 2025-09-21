@@ -1,3 +1,5 @@
+> **Purpose of this Document:** This `README.md` is the primary user-facing documentation for the AI-Mixer project. It provides a general overview, installation instructions, and clear usage examples for running the tool. It is intended for anyone who wants to use or quickly understand the project.
+
 # AI-Mixer
 
 A Python script that uses AI to create a remix of two songs. It separates the vocals from one song and the instrumental from another, then adjusts the pitch and tempo to create a harmonious mashup.
@@ -92,6 +94,40 @@ This change makes the AI-Mixer a more resilient and self-contained application.
 *   `visualize_alignment.py`: A utility script to generate a plot that visually compares the beat alignment of two different remix versions.
 *   `plot_alignment_error.py`: Another utility script that generates a plot to compare the beat alignment *error* of two different remix versions.
 *   `requirements.txt`: A list of all the Python dependencies for the project.
+
+## Future Enhancements
+
+*   **Dynamic Crowd Engagement Effects:** Implement advanced DJ techniques to create more dynamic and engaging mixes.
+    *   **Automatic "Singalong" Moments:** Detect popular vocal phrases and automatically create "acapella out" moments by briefly cutting the instrumental to let the "crowd" (the listener) sing along.
+    *   **Dynamic Build-ups and Drops:** Implement more sophisticated build-ups and drops by manipulating volume, using filter sweeps, and creating rhythmic stutters to mimic how a live DJ creates tension and release to make the crowd jump.
+
+## Workflow Visualization
+
+To help understand the project's architecture and execution flow, you can generate a visual diagram of the function calls. This project uses Mermaid to define the diagram as code.
+
+### Prerequisites
+
+- **Node.js and npm:** The diagram generation tool is a Node.js package. You can check if you have them installed by running `node -v` and `npm -v`.
+
+### Installation
+
+Install the Mermaid CLI (Command Line Interface) globally on your system:
+
+```bash
+npm install -g @mermaid-js/mermaid-cli
+```
+
+*Note: This is a development dependency for generating documentation and is not required to run the core AI-Mixer application.*
+
+### Generating the Diagram
+
+A Mermaid definition file named `flowchart.mmd` is included in the repository. To generate a scalable vector graphic (SVG) image from this file, run the following command:
+
+```bash
+mmdc -i flowchart.mmd -o flowchart.svg
+```
+
+You can then open the generated `flowchart.svg` in any modern web browser to view the diagram. Because it's an SVG, you can zoom in to see all details with perfect clarity.
 
 ## Inspiration
 

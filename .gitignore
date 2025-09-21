@@ -16,6 +16,7 @@ __pycache__/
 
 # Cache files
 .cache/
+analysis_cache.json
 
 # Output files
 *.mp3

@@ -1,3 +1,5 @@
+> **Purpose of this Document:** This `GEMINI.md` serves as a detailed development journal and technical deep-dive for the AI-Mixer project. It documents the project's history, architectural decisions, experiments (like the pivot from the Spotify API), and future enhancements. It is intended for developers or anyone interested in the evolution and internal workings of the project.
+
 # GEMINI.md: AI-Mixer
 
 ## Project Overview
@@ -122,3 +124,37 @@ This entire process, thanks to the analysis cache, took only a few seconds to ex
 *   **Modular Structure:** The code is organized into functions with clear responsibilities.
 *   **Command-Line Interface:** The main script uses the `argparse` module.
 *   **Focus on Local Analysis:** The project is intentionally designed to be self-contained.
+
+## Future Enhancements
+
+*   **Dynamic Crowd Engagement Effects:** Implement advanced DJ techniques to create more dynamic and engaging mixes.
+    *   **Automatic "Singalong" Moments:** Detect popular vocal phrases and automatically create "acapella out" moments by briefly cutting the instrumental to let the "crowd" (the listener) sing along.
+    *   **Dynamic Build-ups and Drops:** Implement more sophisticated build-ups and drops by manipulating volume, using filter sweeps, and creating rhythmic stutters to mimic how a live DJ creates tension and release to make the crowd jump.
+
+## Workflow Visualization
+
+To help understand the project's architecture and execution flow, you can generate a visual diagram of the function calls. This project uses Mermaid to define the diagram as code.
+
+### Prerequisites
+
+- **Node.js and npm:** The diagram generation tool is a Node.js package. You can check if you have them installed by running `node -v` and `npm -v`.
+
+### Installation
+
+Install the Mermaid CLI (Command Line Interface) globally on your system:
+
+```bash
+npm install -g @mermaid-js/mermaid-cli
+```
+
+*Note: This is a development dependency for generating documentation and is not required to run the core AI-Mixer application.*
+
+### Generating the Diagram
+
+A Mermaid definition file named `flowchart.mmd` is included in the repository. To generate a scalable vector graphic (SVG) image from this file, run the following command:
+
+```bash
+mmdc -i flowchart.mmd -o flowchart.svg
+```
+
+You can then open the generated `flowchart.svg` in any modern web browser to view the diagram. Because it's an SVG, you can zoom in to see all details with perfect clarity.
