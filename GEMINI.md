@@ -58,13 +58,28 @@ To further enhance the project's capabilities, a tool for creating continuous mi
 
 ### 1. Setup and Installation
 
-The project uses a Python virtual environment (`venv`) to manage its dependencies.
+The project uses a Python virtual environment (`venv`) to manage its dependencies. Before running the application, you should create and activate the virtual environment.
 
-**Installation:**
+1.  **Create the virtual environment (if it doesn't exist):**
+    ```bash
+    python3 -m venv venv
+    ```
 
-```bash
-/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/pip install -r requirements.txt
-```
+2.  **Activate the virtual environment:**
+    *   **On macOS and Linux:**
+        ```bash
+        source venv/bin/activate
+        ```
+    *   **On Windows:**
+        ```bash
+        .\venv\Scripts\activate
+        ```
+
+3.  **Install dependencies:**
+    Once the virtual environment is activated, install the required packages from `requirements.txt`:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
 ### 2. Running the Script
 
@@ -75,7 +90,7 @@ The `creative_remix.py` script can be run in two modes.
 This mode creates a standard mashup of two songs.
 
 ```bash
-/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/python creative_remix.py --mode single_mashup --songA_path <path_to_song_A> --songB_path <path_to_song_B>
+python creative_remix.py --mode single_mashup --songA_path <path_to_song_A> --songB_path <path_to_song_B>
 ```
 
 **B) AI DJ Set Mode**
@@ -84,13 +99,13 @@ This mode analyzes all songs in a directory, caches the analysis, curates a musi
 
 ```bash
 # Generate a standard, full-length DJ mix
-/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/python creative_remix.py --mode dj_set --mix_style relaxed
+python creative_remix.py --mode dj_set --mix_style relaxed
 
 # Generate a fast-paced "highlight reel" mix
-/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/python creative_remix.py --mode dj_set --mix_style energetic
+python creative_remix.py --mode dj_set --mix_style energetic
 
 # Generate a professional-style mix with phrase matching
-/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/python creative_remix.py --mode dj_set --mix_style pro
+python creative_remix.py --mode dj_set --mix_style pro
 ```
 
 *   **Relaxed Style (Default):** This mode uses the full length of each song, creating a traditional DJ set with a simple, beat-aware volume crossfade between tracks.

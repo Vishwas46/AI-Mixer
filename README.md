@@ -6,18 +6,28 @@ A Python script that uses AI to create a remix of two songs. It separates the vo
 
 ## Dependencies
 
-This project uses a virtual environment (`venv`) to manage dependencies. The main libraries used are:
+This project uses a Python virtual environment (`venv`) to manage dependencies. Before running the application, you should create and activate the virtual environment.
 
-*   `demucs`: For audio source separation.
-*   `librosa`: For audio analysis.
-*   `pydub`: For audio manipulation and effects.
-*   `numpy`: For numerical operations.
-*   `soundfile`: For reading and writing audio files.
+1.  **Create the virtual environment (if it doesn't exist):**
+    ```bash
+    python3 -m venv venv
+    ```
 
-All dependencies are listed in the `requirements.txt` file and can be installed by running:
-```bash
-/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/pip install -r requirements.txt
-```
+2.  **Activate the virtual environment:**
+    *   **On macOS and Linux:**
+        ```bash
+        source venv/bin/activate
+        ```
+    *   **On Windows:**
+        ```bash
+        .\venv\Scripts\activate
+        ```
+
+3.  **Install dependencies:**
+    Once the virtual environment is activated, install the required packages from `requirements.txt`:
+    ```bash
+    pip install -r requirements.txt
+    ```
 
 ## Usage
 
@@ -29,10 +39,10 @@ This mode creates a classic mashup from two songs, taking the vocals from one an
 
 ```bash
 # Basic usage (vocals from songA, instrumental from songB)
-/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/python creative_remix.py --mode single_mashup --songA_path songA.mp3 --songB_path songB.mp3
+python creative_remix.py --mode single_mashup --songA_path songA.mp3 --songB_path songB.mp3
 
 # Specify a different output file
-/Users/vishwas/Documents/workspace/AI-Mixer/venv/bin/python creative_remix.py --mode single_mashup --songA_path songA.mp3 --songB_path songB.mp3 --out my_remix.mp3
+python creative_remix.py --mode single_mashup --songA_path songA.mp3 --songB_path songB.mp3 --out my_remix.mp3
 ```
 
 ### 2. AI DJ Set Mode (`--mode dj_set`)
