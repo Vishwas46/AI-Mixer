@@ -6,6 +6,7 @@ import sys
 import json
 import numpy as np
 import librosa
+import time
 from datetime import datetime
 from pydub import AudioSegment
 import pyrubberband as pyrb
@@ -141,6 +142,72 @@ def find_energetic_segment(file_path, duration_percentage=0.5):
     
     return start_ms, end_ms
 
+def find_dj_clip(song_path, structure, bpm, song_duration):
+    """
+    Finds the best segment of a track for DJ mixing based on rhythmic density,
+    energy stability, and musical phrasing (loopability).
+    """
+    try:
+        y, sr = librosa.load(song_path)
+    except Exception as e:
+        print(f"  Could not load {os.path.basename(song_path)} for clip analysis: {e}")
+        return 0, 30000 # fallback to first 30s
+
+    best_segment = None
+    max_score = -1
+
+    print(f"  Analyzing {len(structure)} segments for 'mixability' (20-50% length)...")
+
+    # Define the desired length constraints based on the total song duration
+    min_len_s = song_duration * 0.20
+    max_len_s = song_duration * 0.50
+
+    for segment in structure:
+        start_s = segment['start']
+        end_s = segment['end']
+        duration = end_s - start_s
+
+        # --- Filter out unsuitable segments ---
+        if not (min_len_s < duration < max_len_s):
+            continue
+        
+        y_seg = y[int(start_s*sr):int(end_s*sr)]
+        if len(y_seg) == 0:
+            continue
+
+        # --- Calculate Score ---
+        # 1. Rhythmic Density Score
+        onset_env = librosa.onset.onset_strength(y=y_seg, sr=sr)
+        rhythmic_density = np.mean(onset_env)
+
+        # 2. Energy Stability Score (low variance is good)
+        rms = librosa.feature.rms(y=y_seg)[0]
+        energy_stability = 1 / (1 + np.var(rms))
+
+        # 3. "Loopability" Score (favors segments that are multiples of 8 bars)
+        beats_per_bar = 4 # Assume 4/4 time
+        beats = (duration * bpm) / 60
+        bars = beats / beats_per_bar
+        # Penalize segments that are not close to a multiple of 8 or 16 bars
+        loopability_8 = 1 - (abs(round(bars / 8) * 8 - bars) / 8)
+        loopability_16 = 1 - (abs(round(bars / 16) * 16 - bars) / 16)
+        loopability = max(loopability_8, loopability_16)
+
+        # --- Final Score ---
+        final_score = (rhythmic_density * 2) + energy_stability + (loopability * 1.5)
+
+        if final_score > max_score:
+            max_score = final_score
+            best_segment = segment
+
+    if best_segment:
+        print(f"    -> Best clip found: {best_segment['start']:.1f}s - {best_segment['end']:.1f}s (Score: {max_score:.2f})")
+        return best_segment['start'] * 1000, best_segment['end'] * 1000
+    else:
+        # Fallback to just the most energetic part if no suitable segment is found
+        print("  Fallback: No suitable structural segment found, finding most energetic part.")
+        return find_energetic_segment(song_path)
+
 def create_continuous_mix_from_setlist(setlist, mix_style, output_dir="remix_outputs/"):
     """
     Creates a continuous DJ mix from a curated setlist with a simplified, robust approach.
@@ -153,47 +220,61 @@ def create_continuous_mix_from_setlist(setlist, mix_style, output_dir="remix_out
     # --- Load all audio segments --- #
     audio_segments = [AudioSegment.from_mp3(s['path']) for s in setlist]
 
+    # --- If energetic style, clip tracks to their most energetic part --- #
+    if mix_style == 'energetic':
+        print("\n--- Clipping tracks for energetic style (Intelligent Mode)... ---")
+        clipped_segments = []
+        for i, song in enumerate(setlist):
+            start_ms, end_ms = find_dj_clip(song['path'], song['structure'], song['bpm'], song['duration'])
+            clipped_segments.append(audio_segments[i][start_ms:end_ms])
+        audio_segments = clipped_segments
+
     # --- Initialize the mix --- #
     final_mix = audio_segments[0]
     print(f"Starting mix with: {setlist[0]['filename']}")
 
     # --- Process transitions --- #
     for i in range(len(setlist) - 1):
-        current_audio = final_mix
-        next_audio = audio_segments[i+1]
         current_features = setlist[i]
         next_features = setlist[i+1]
+        next_audio = audio_segments[i+1]
 
-        crossfade_duration = 8000  # Default fallback crossfade
-
+        # --- Step 1: Calculate Crossfade Duration (Style-Dependent) ---
+        crossfade_duration = 8000  # Default
         if mix_style == 'pro':
             outro_segment = current_features['structure'][-1] if current_features['structure'] else None
             intro_segment = next_features['structure'][0] if next_features['structure'] else None
-            
             if outro_segment and intro_segment:
                 outro_duration = (outro_segment['end'] - outro_segment['start']) * 1000
                 intro_duration = (intro_segment['end'] - intro_segment['start']) * 1000
-                
                 if outro_duration > 1000 and intro_duration > 1000:
-                    # Use the shorter of the two segments for the transition
-                    crossfade_duration = int(min(outro_duration, intro_duration))
-                    print(f"Mixing in {next_features['filename']} (Pro Transition: {crossfade_duration/1000:.1f}s)")
-                else:
-                    print(f"Mixing in {next_features['filename']} (Fallback Beat-Match)")
-            else:
-                print(f"Mixing in {next_features['filename']} (Fallback Beat-Match)")
-        else:
-            # Logic for relaxed and energetic styles
+                    crossfade_duration = int(min(outro_duration, intro_duration, 16000))
+        else:  # relaxed and energetic
             bpm = current_features['bpm']
             if bpm > 0:
-                crossfade_duration = int((60000 / bpm) * 16) # 4 bars
-            print(f"Mixing in {next_features['filename']}")
+                crossfade_duration = int((60000 / bpm) * 16)  # 4 bars
 
-        # --- Final safety check on crossfade duration --- #
-        safe_crossfade = min(crossfade_duration, len(current_audio), len(next_audio))
+        safe_crossfade = min(crossfade_duration, len(final_mix), len(next_audio))
 
-        # --- Append the next track with the calculated crossfade --- #
-        final_mix = current_audio.append(next_audio, crossfade=safe_crossfade)
+        # --- Step 2: Perform Unified EQ-Based Transition ---
+        print(f"Mixing in {next_features['filename']} (EQ Transition: {safe_crossfade/1000:.1f}s)")
+        
+        # 1. Get the audio segments for the transition
+        out_fade_segment = final_mix[-safe_crossfade:]
+        in_fade_segment = next_audio[:safe_crossfade]
+
+        # 2. High-pass the outgoing segment to remove its bass
+        out_fade_filtered = out_fade_segment.high_pass_filter(140)
+
+        # 3. Manually create the transition by fading and overlaying
+        transition = in_fade_segment.fade_in(safe_crossfade).overlay(
+            out_fade_filtered.fade_out(safe_crossfade)
+        )
+
+        # 4. Stitch the mix back together
+        main_part = final_mix[:-safe_crossfade]
+        rest_of_next_track = next_audio[safe_crossfade:]
+        final_mix = main_part + transition + rest_of_next_track
 
     # --- Export the final mix --- #
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -248,7 +329,8 @@ def run_dj_set_mode(args):
         is_cached = (cached_data and 
                      cached_data.get('mod_time') == file_mod_time and
                      'structure' in cached_data and 
-                     'vocal_regions' in cached_data)
+                     'vocal_regions' in cached_data and
+                     'duration' in cached_data) # Check for new duration field
 
         if is_cached:
             print(f"Using cached analysis for {song_file}")

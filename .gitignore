@@ -21,3 +21,7 @@ analysis_cache.json
 # Output files
 *.mp3
 *.png
+
+# Analysis artifacts
+visualize_transition.py
+transition_analysis/

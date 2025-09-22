@@ -9,20 +9,33 @@ from audio_utils import run_command, read_wav_mono
 
 def analyze_structure(y, sr):
     """
-    Analyzes the structure of a track by finding segments based on energy.
-    Returns a list of dictionaries with 'start' and 'end' times in seconds.
+    Analyzes the structure of a track by finding musically relevant segment boundaries
+    based on changes in timbre and harmony (novelty).
     """
-    print("  Analyzing song structure...")
-    # Find segments by splitting the track where the volume is low
-    segment_intervals = librosa.effects.split(y, top_db=40)
+    print("  Analyzing song structure with advanced novelty detection...")
     
-    # Convert from sample indices to seconds
+    # Use a combination of MFCCs and Chroma for feature representation
+    mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+    chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
+    features = np.vstack([mfccs, chroma])
+
+    # Use a Laplacian segmentation algorithm to find boundaries
+    # This is more robust for electronic music than splitting by silence
+    boundaries = librosa.segment.agglomerative(features, k=10) # Aim for roughly 10 segments
+    segment_times = librosa.frames_to_time(boundaries, sr=sr)
+
+    # Add the start and end of the track to the boundaries
+    full_boundaries = np.concatenate(([0], segment_times, [librosa.get_duration(y=y, sr=sr)]))
+
     segments = []
-    for interval in segment_intervals:
-        segments.append({
-            "start": librosa.samples_to_time(interval[0], sr=sr),
-            "end": librosa.samples_to_time(interval[1], sr=sr)
-        })
+    for i in range(len(full_boundaries) - 1):
+        start_time = full_boundaries[i]
+        end_time = full_boundaries[i+1]
+        # Ensure segments are not too short
+        if end_time - start_time > 1.0:
+            segments.append({"start": start_time, "end": end_time})
+            
+    print(f"    -> Found {len(segments)} musically distinct segments.")
     return segments
 
 def analyze_audio_local(file_path):
@@ -65,13 +78,17 @@ def analyze_audio_local(file_path):
     # 4. Analyze Structure
     structure = analyze_structure(y, sr)
 
+    # 5. Get total duration
+    duration = librosa.get_duration(y=y, sr=sr)
+
     return {
         "bpm": float(tempo),
         "key": int(key_index),
         "mode": key_mode,
         "key_str": key_str,
         "energy": float(energy_level),
-        "structure": structure
+        "structure": structure,
+        "duration": float(duration)
     }
 
 def analyze_vocal_presence(file_path, venv_path):

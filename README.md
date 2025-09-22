@@ -50,7 +50,7 @@ python creative_remix.py --mode single_mashup --songA_path songA.mp3 --songB_pat
 This is the most powerful feature. The script analyzes an entire directory of songs and automatically generates a continuous, multi-song DJ mix. It can create two different styles of mix using the `--mix_style` flag.
 
 **Workflow:**
-1.  **Analyze:** The script performs a deep analysis of all songs in a directory to find their BPM, key, energy, and vocal presence. This analysis is cached in `analysis_cache.json` to make subsequent runs much faster.
+1.  **Analyze:** The script performs a deep analysis of all songs in a directory to find their BPM, key, energy, and structure. It uses advanced novelty detection on the song's musical features (timbre, harmony) to identify distinct sections like intros, verses, and breakdowns. This analysis is cached in `analysis_cache.json` to make subsequent runs much faster.
 2.  **Curate:** It then acts as an AI DJ, selecting the lowest-energy track to start and building a musically compatible setlist based on harmonic mixing, tempo, and energy flow.
 3.  **Mix:** Finally, it generates a single MP3 file of the complete set, with each track seamlessly crossfaded into the next.
 
@@ -67,10 +67,9 @@ This is the most powerful feature. The script analyzes an entire directory of so
 ```
 
 **Mix Styles:**
-*   `relaxed` (Default): This mode uses the full length of each song to create a traditional DJ set with a simple, beat-aware volume crossfade.
-*   `energetic` (Pro Mix): This mode creates a high-intensity "megamix" using professional DJ techniques. It automatically finds the most energetic 50% of each track, then seamlessly mixes these clips by:
-    *   **Tempo Synchronizing:** Perfectly matching the BPM of the incoming track to the outgoing track.
-    *   **EQ Mixing:** Performing a "bass swap" to ensure a clean, powerful transition without clashing frequencies.
+*   `relaxed` (Default): This mode uses the full length of each song, creating a traditional DJ set. All transitions are beat-aware and use EQ filtering to ensure a clean, professional sound.
+*   `energetic`: This mode creates a high-intensity "megamix." It uses an "Intelligent Clipping" algorithm to find the most mixable segment of each song by analyzing rhythmic density and structure, favoring driving, loopable sections over simple choruses. All transitions are beat-synced and use EQ filtering for maximum clarity.
+*   `pro`: This is the most advanced mode. It uses full-length tracks and performs a deep structural analysis to find the natural intro and outro of each song, attempting to perform a seamless "phrase match." All transitions use the same professional EQ filtering.
 
 The final mix is saved with a timestamp in the `remix_outputs/` directory.
 

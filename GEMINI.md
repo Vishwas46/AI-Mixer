@@ -108,9 +108,9 @@ python creative_remix.py --mode dj_set --mix_style energetic
 python creative_remix.py --mode dj_set --mix_style pro
 ```
 
-*   **Relaxed Style (Default):** This mode uses the full length of each song, creating a traditional DJ set with a simple, beat-aware volume crossfade between tracks.
-*   **Energetic Style:** This mode creates a high-intensity "megamix" by finding the most energetic 50% of each song and mixing those clips.
-*   **Pro Style:** This is the most advanced mode. It performs a deep structural analysis to find the natural intro and outro of each song. It then attempts to perform a "phrase match" by seamlessly crossfading the outro of one song with the intro of the next. If the song structures aren't suitable for a clean phrase match, it automatically falls back to a standard beat-matched crossfade to ensure a smooth mix.
+*   **Relaxed Style (Default):** This mode uses the full length of each song, creating a traditional DJ set. All transitions are beat-aware and use EQ filtering to ensure a clean, professional sound.
+*   **Energetic Style:** This mode creates a high-intensity "megamix" by finding and mixing the most energetic 50% of each song. All transitions are beat-synced and use EQ filtering for maximum clarity and punch.
+*   **Pro Style:** This is the most advanced mode. It uses full-length tracks and performs a deep structural analysis to find the natural intro and outro of each song, attempting to perform a seamless "phrase match." All transitions use the same professional EQ filtering.
 
 If `--songs_dir` is not provided, it defaults to the `songs/` directory. The final mix is saved with a timestamp and the mix style in the `remix_outputs/` folder.
 
@@ -173,3 +173,28 @@ mmdc -i flowchart.mmd -o flowchart.svg
 ```
 
 You can then open the generated `flowchart.svg` in any modern web browser to view the diagram. Because it's an SVG, you can zoom in to see all details with perfect clarity.
+
+## Major Feature Upgrade: Intelligent DJing
+
+Based on detailed user feedback during an interactive session, the AI DJ underwent a significant upgrade to elevate its mixing capabilities from a simple automated tool to a more professional and artistic engine.
+
+### 1. From Simple Overlaps to EQ-Clean Transitions
+
+*   **Problem:** The initial "pro" mix style, while using phrase matching for timing, only performed a simple volume crossfade. This resulted in a muddy, "overlapped" sound, as the bass and other frequencies of the two tracks would clash.
+*   **Diagnostics:** A new analysis script, `visualize_transition.py`, was created to generate spectrograms of the transitions. This provided clear visual proof of the frequency clashes.
+*   **Solution:** The mixing engine was refactored to use a universal EQ-based transition for all mix styles. This new logic applies a high-pass filter to the outgoing track, cutting its bass to make room for the incoming track's bassline, mimicking a standard professional DJ technique.
+
+### 2. From Energy-Based to "Intelligent" Clipping
+
+*   **Problem:** The initial `energetic` style was designed to mix the "most energetic 50%" of each song. This was too simplistic, often just grabbing the main chorus or drop, leading to repetitive mixes that lacked flow.
+*   **Solution:** A new "Intelligent Clipping" algorithm (`find_dj_clip`) was implemented. This new system goes far beyond simple loudness:
+    *   It analyzes the song's structure to find musically distinct sections.
+    *   It scores each section based on **rhythmic density** and **energy stability** to find the most "mixable" and loopable parts.
+    *   It operates within a dynamic length constraint (20-50% of the song) to ensure clips are substantial.
+
+### 3. Upgrading the Core Analysis Engine
+
+*   **Problem:** During the implementation of Intelligent Clipping, it was discovered that the underlying structural analysis was too basic. It only split songs by silence, which was ineffective for electronic music and provided poor data for the clipping algorithm.
+*   **Solution:** The core analysis engine in `audio_analyzer.py` was completely upgraded. It now uses a sophisticated novelty detection algorithm (`librosa.segment.agglomerative`) to find segment boundaries based on changes in the music's timbre and harmony. This provides the rich, high-quality structural data that the Intelligent Clipping feature needs to work effectively.
+
+This iterative cycle of feedback, analysis, and implementation has resulted in a significantly more capable and professional-sounding AI DJ.
