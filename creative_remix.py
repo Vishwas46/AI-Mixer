@@ -1,4 +1,9 @@
 #!/usr/bin/env python
+# -----------------------------------------------------------------------------
+# Project: AI-Mixer
+# Author: Vishwas
+# License: MIT License
+# -----------------------------------------------------------------------------
 # creative_remix.py
 import argparse
 import os

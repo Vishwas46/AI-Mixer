@@ -1,3 +1,8 @@
+# -----------------------------------------------------------------------------
+# Project: AI-Mixer
+# Author: Vishwas
+# License: MIT License
+# -----------------------------------------------------------------------------
 import librosa
 import matplotlib.pyplot as plt
 import numpy as np

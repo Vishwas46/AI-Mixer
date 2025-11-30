@@ -1,3 +1,8 @@
+# -----------------------------------------------------------------------------
+# Project: AI-Mixer
+# Author: Vishwas
+# License: MIT License
+# -----------------------------------------------------------------------------
 # audio_utils.py
 import os
 import subprocess

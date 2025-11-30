@@ -1,3 +1,8 @@
+# -----------------------------------------------------------------------------
+# Project: AI-Mixer
+# Author: Vishwas
+# License: MIT License
+# -----------------------------------------------------------------------------
 import os
 import sys
 import shutil
@@ -61,8 +66,7 @@ def analyze_alignment(remix_path, venv_path):
             print("Assessment: Fair alignment. May have some minor, barely perceptible timing issues.")
         else:
             print("Assessment: Poor alignment. The vocals may sound noticeably off-beat.")
-        print("-----------------------------------------------------\
-")
+        print("-----------------------------------------------------")
 
     finally:
         shutil.rmtree(tmp_dir)

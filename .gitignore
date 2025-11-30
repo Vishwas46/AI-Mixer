@@ -25,3 +25,7 @@ analysis_cache.json
 # Analysis artifacts
 visualize_transition.py
 transition_analysis/
+
+# Legal documents
+legal_brief.md
+legal_brief.pdf
