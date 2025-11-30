@@ -5,7 +5,7 @@ Thank you for your interest in contributing to AI-Mixer! We welcome contribution
 ## How to Contribute
 
 1.  **Fork the repository:** Click the "Fork" button on the top right of the repository page.
-2.  **Clone your fork:** `git clone https://github.com/YOUR_USERNAME/AI-Mixer.git`
+2.  **Clone your fork:** `git clone https://github.com/Vishwas46/AI-Mixer.git`
 3.  **Create a branch:** `git checkout -b feature/your-new-feature` or `git checkout -b fix/bug-fix-name`
 4.  **Make your changes:** Write clean, documented code.
 5.  **Test your changes:** Ensure your changes work as expected and don't break existing functionality.
