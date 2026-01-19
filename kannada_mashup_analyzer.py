@@ -11,6 +11,15 @@
 # creating professional mashups of Kannada songs, particularly from channels
 # like Anand Audio. It identifies all key characteristics needed for seamless
 # DJ mixing and mashup creation.
+#
+# VERSION 2.0 - Enhanced with Professional DJ Features:
+# - Beat grid and downbeat detection
+# - Phrase boundary detection (4/8/16/32 bar phrases)
+# - DJ cue points (mix-in, mix-out, drop, loop points)
+# - Vocal-free mix zones
+# - Transition type recommendations
+# - Multi-track mashup planning
+# - Anand Audio specific patterns (dialogue, filmi intros)
 # -----------------------------------------------------------------------------
 
 import os
@@ -19,6 +28,7 @@ import numpy as np
 import librosa
 import scipy.signal
 from collections import defaultdict
+from itertools import combinations
 from audio_analyzer import analyze_audio_local, analyze_vocal_presence
 
 
@@ -60,6 +70,773 @@ EMOTION_CATEGORIES = {
     'devotional': ['mayamalavagowla', 'hamsadhwani', 'sindhubhairavi'],
     'folk_energetic': ['abheri', 'mohanam', 'shankarabharanam'],
 }
+
+# DJ Transition Types
+TRANSITION_TYPES = {
+    'cut': 'Hard cut - instant switch, works for dramatic moments',
+    'crossfade': 'Gradual blend over 4-8 bars',
+    'eq_swap': 'Swap bass first, then mids/highs - professional DJ technique',
+    'echo_out': 'Echo/delay out the outgoing track',
+    'filter_sweep': 'High-pass filter sweep on outgoing track',
+    'drop_swap': 'Cut at the drop of the incoming track',
+    'acapella_blend': 'Bring in vocals over instrumental',
+    'instrumental_blend': 'Bring in instrumental under vocals',
+}
+
+# Anand Audio specific song patterns
+ANAND_AUDIO_PATTERNS = {
+    'dialogue_intro': 'Movie dialogue before song starts',
+    'filmi_intro': 'Orchestral/BGM style intro',
+    'gaana_style': 'High-energy folk/mass style',
+    'melody_style': 'Soft romantic melody',
+    'devotional_style': 'Bhakti/devotional song',
+    'duet_style': 'Male-female duet pattern',
+    'item_number': 'Dance/item song pattern',
+}
+
+
+# =============================================================================
+# BEAT GRID AND DOWNBEAT DETECTION (DJ ESSENTIAL)
+# =============================================================================
+
+def detect_beat_grid(y, sr):
+    """
+    Detects the beat grid including downbeat (beat 1) position.
+
+    This is ESSENTIAL for DJing - you need to know exactly where each beat
+    falls to beat-match properly. The downbeat is especially important for
+    phrase-aligned mixing.
+
+    Returns:
+        dict: Beat grid with timestamps, downbeats, and confidence
+    """
+    print("  Detecting beat grid and downbeats...")
+
+    # Get tempo and beat frames
+    tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr, units='frames')
+    beat_times = librosa.frames_to_time(beat_frames, sr=sr)
+
+    # Calculate beat interval consistency (for tempo stability)
+    if len(beat_times) > 1:
+        intervals = np.diff(beat_times)
+        tempo_stability = 1 - (np.std(intervals) / np.mean(intervals)) if np.mean(intervals) > 0 else 0
+        avg_beat_interval = float(np.mean(intervals))
+    else:
+        tempo_stability = 0
+        avg_beat_interval = 60.0 / tempo if tempo > 0 else 0.5
+
+    # Detect downbeats (beat 1 of each bar)
+    # Use onset strength to find accented beats
+    onset_env = librosa.onset.onset_strength(y=y, sr=sr)
+
+    # Get onset strength at each beat
+    beat_strengths = []
+    for frame in beat_frames:
+        if frame < len(onset_env):
+            beat_strengths.append(onset_env[frame])
+        else:
+            beat_strengths.append(0)
+    beat_strengths = np.array(beat_strengths)
+
+    # Find downbeats by looking for periodic accent pattern
+    # Typically in 4/4, beat 1 is strongest, beat 3 is second strongest
+    downbeat_indices = []
+    best_start = 0
+    max_strength = -1
+
+    if len(beat_strengths) >= 8:
+        # Try to find 4-beat pattern
+        for start in range(4):
+            pattern_strength = 0
+            count = 0
+            for i in range(start, len(beat_strengths), 4):
+                pattern_strength += beat_strengths[i]
+                count += 1
+            if count > 0:
+                pattern_strength /= count
+
+            if pattern_strength > max_strength:
+                max_strength = pattern_strength
+                best_start = start
+
+        # Mark downbeats (every 4th beat starting from best_start)
+        for i in range(best_start, len(beat_frames), 4):
+            downbeat_indices.append(i)
+
+    downbeat_times = [float(beat_times[i]) for i in downbeat_indices if i < len(beat_times)]
+
+    # First downbeat is crucial for mixing
+    first_downbeat = downbeat_times[0] if downbeat_times else (beat_times[0] if len(beat_times) > 0 else 0)
+
+    return {
+        'tempo': float(tempo),
+        'tempo_stability': float(tempo_stability),
+        'beat_times': [float(t) for t in beat_times],
+        'beat_count': len(beat_times),
+        'avg_beat_interval': avg_beat_interval,
+        'downbeat_times': downbeat_times,
+        'first_downbeat': float(first_downbeat),
+        'beats_per_bar': 4,  # Assuming 4/4, could be detected
+        'is_tempo_stable': tempo_stability > 0.9,
+        'tempo_drift_warning': tempo_stability < 0.85
+    }
+
+
+# =============================================================================
+# PHRASE BOUNDARY DETECTION (DJ ESSENTIAL)
+# =============================================================================
+
+def detect_phrase_boundaries(y, sr, beat_grid, duration):
+    """
+    Detects musical phrase boundaries (4, 8, 16, 32 bar phrases).
+
+    DJs ALWAYS mix on phrase boundaries for seamless transitions.
+    A phrase is typically 8 or 16 bars in pop/film music.
+
+    Returns:
+        dict: Phrase boundaries at different levels
+    """
+    print("  Detecting phrase boundaries...")
+
+    tempo = beat_grid['tempo']
+    beat_times = beat_grid['beat_times']
+    beats_per_bar = beat_grid['beats_per_bar']
+
+    if tempo <= 0 or len(beat_times) < 16:
+        return {
+            '4_bar_phrases': [],
+            '8_bar_phrases': [],
+            '16_bar_phrases': [],
+            '32_bar_phrases': [],
+            'primary_phrase_length': 8,
+            'phrase_boundaries': []
+        }
+
+    # Calculate bar duration
+    bar_duration = (60.0 / tempo) * beats_per_bar
+
+    # Detect structural changes using spectral flux
+    hop_length = 512
+    onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop_length)
+
+    # Compute novelty function (detects changes)
+    # Use a longer window for phrase-level detection
+    novelty_window = int(bar_duration * sr / hop_length * 4)  # 4 bars window
+    if novelty_window > 1:
+        novelty = np.abs(np.diff(np.convolve(onset_env, np.ones(novelty_window)/novelty_window, mode='same')))
+    else:
+        novelty = np.abs(np.diff(onset_env))
+
+    # Find peaks in novelty (potential phrase boundaries)
+    min_phrase_samples = int(4 * bar_duration * sr / hop_length)  # Minimum 4 bars between phrases
+    peaks, _ = scipy.signal.find_peaks(novelty, distance=min_phrase_samples, height=np.mean(novelty))
+
+    # Convert to times
+    novelty_times = librosa.frames_to_time(peaks, sr=sr, hop_length=hop_length)
+
+    # Generate phrase boundaries at regular intervals
+    phrases_4bar = []
+    phrases_8bar = []
+    phrases_16bar = []
+    phrases_32bar = []
+
+    # Start from the first downbeat
+    first_downbeat = beat_grid['first_downbeat']
+
+    # Generate 4-bar phrases
+    time = first_downbeat
+    bar_count = 0
+    while time < duration:
+        phrases_4bar.append(float(time))
+        if bar_count % 2 == 0:
+            phrases_8bar.append(float(time))
+        if bar_count % 4 == 0:
+            phrases_16bar.append(float(time))
+        if bar_count % 8 == 0:
+            phrases_32bar.append(float(time))
+        time += bar_duration * 4
+        bar_count += 1
+
+    # Determine primary phrase length based on novelty alignment
+    phrase_alignment_scores = {}
+    for phrase_name, phrases in [('4_bar', phrases_4bar), ('8_bar', phrases_8bar),
+                                   ('16_bar', phrases_16bar)]:
+        if len(phrases) < 2:
+            continue
+        # Score how well novelty peaks align with phrase boundaries
+        alignment_score = 0
+        for nov_time in novelty_times:
+            min_dist = min(abs(nov_time - p) for p in phrases)
+            if min_dist < bar_duration:  # Within 1 bar
+                alignment_score += 1
+        phrase_alignment_scores[phrase_name] = alignment_score / len(novelty_times) if novelty_times.size > 0 else 0
+
+    # Best phrase length
+    if phrase_alignment_scores:
+        primary_phrase = max(phrase_alignment_scores.items(), key=lambda x: x[1])[0]
+        primary_phrase_bars = int(primary_phrase.split('_')[0])
+    else:
+        primary_phrase_bars = 8  # Default
+
+    return {
+        '4_bar_phrases': phrases_4bar,
+        '8_bar_phrases': phrases_8bar,
+        '16_bar_phrases': phrases_16bar,
+        '32_bar_phrases': phrases_32bar,
+        'primary_phrase_length': primary_phrase_bars,
+        'phrase_boundaries': phrases_8bar,  # Most common for mixing
+        'bar_duration_sec': float(bar_duration),
+        'detected_structure_changes': [float(t) for t in novelty_times[:20]]
+    }
+
+
+# =============================================================================
+# DJ CUE POINTS (ACTIONABLE MIX POINTS)
+# =============================================================================
+
+def generate_dj_cue_points(y, sr, beat_grid, phrases, sections, hooks_drops, vocal_regions, duration):
+    """
+    Generates actionable DJ cue points for mixing.
+
+    These are the EXACT timestamps a DJ needs:
+    - MIX IN: Where to start bringing this track in
+    - MIX OUT: Where to start transitioning out
+    - DROP: The main energy drop point
+    - LOOP: Safe points to create a loop
+    - HOT CUES: Quick jump points for live performance
+
+    Returns:
+        dict: Complete cue point set
+    """
+    print("  Generating DJ cue points...")
+
+    bar_duration = phrases.get('bar_duration_sec', 2.0)
+    phrase_boundaries = phrases.get('8_bar_phrases', [])
+
+    # Helper: find nearest phrase boundary
+    def nearest_phrase(time):
+        if not phrase_boundaries:
+            return time
+        return min(phrase_boundaries, key=lambda p: abs(p - time))
+
+    # Helper: check if time is in vocal region
+    def in_vocal_region(time):
+        for vr in vocal_regions:
+            if vr['start'] <= time <= vr['end']:
+                return True
+        return False
+
+    # =========== MIX IN POINT ===========
+    # Best place to bring this track into a mix
+    # Prefer: start of intro, first phrase boundary, or first non-vocal section
+
+    mix_in_candidates = []
+
+    # Option 1: Start of intro (if exists and is instrumental)
+    intro = sections.get('intro')
+    if intro and not intro.get('has_vocals', False):
+        mix_in_candidates.append({
+            'time': nearest_phrase(intro['start']),
+            'reason': 'Start of instrumental intro',
+            'quality': 'excellent'
+        })
+
+    # Option 2: First phrase boundary
+    if phrase_boundaries:
+        first_phrase = phrase_boundaries[0]
+        mix_in_candidates.append({
+            'time': first_phrase,
+            'reason': 'First phrase boundary',
+            'quality': 'good'
+        })
+
+    # Option 3: First vocal-free zone after intro
+    if vocal_regions:
+        first_vocal_start = vocal_regions[0]['start'] if vocal_regions else duration
+        if first_vocal_start > bar_duration * 4:
+            mix_in_candidates.append({
+                'time': nearest_phrase(0),
+                'reason': 'Instrumental opening',
+                'quality': 'good'
+            })
+
+    # Select best mix-in point
+    mix_in = mix_in_candidates[0] if mix_in_candidates else {'time': 0, 'reason': 'Track start', 'quality': 'fair'}
+
+    # =========== MIX OUT POINT ===========
+    # Best place to transition out of this track
+
+    mix_out_candidates = []
+
+    # Option 1: Start of outro
+    outro = sections.get('outro')
+    if outro:
+        mix_out_candidates.append({
+            'time': nearest_phrase(outro['start']),
+            'reason': 'Start of outro section',
+            'quality': 'excellent'
+        })
+
+    # Option 2: Last instrumental section
+    interludes = sections.get('interludes', [])
+    if interludes:
+        last_interlude = max(interludes, key=lambda x: x['start'])
+        if last_interlude['start'] > duration * 0.6:
+            mix_out_candidates.append({
+                'time': nearest_phrase(last_interlude['start']),
+                'reason': 'Final interlude',
+                'quality': 'good'
+            })
+
+    # Option 3: 16 bars before end
+    late_phrase = [p for p in phrase_boundaries if duration - 32 * bar_duration / 4 < p < duration - 8 * bar_duration / 4]
+    if late_phrase:
+        mix_out_candidates.append({
+            'time': late_phrase[0],
+            'reason': 'Late song phrase boundary',
+            'quality': 'good'
+        })
+
+    mix_out = mix_out_candidates[0] if mix_out_candidates else {'time': max(0, duration - 30), 'reason': 'Near end', 'quality': 'fair'}
+
+    # =========== DROP POINT ===========
+    # The main energy moment - perfect for dramatic transitions
+
+    drops = hooks_drops.get('beat_drops', [])
+    primary_hook = hooks_drops.get('primary_hook')
+
+    if drops:
+        main_drop = max(drops, key=lambda d: d.get('intensity', 0))
+        drop_cue = {
+            'time': nearest_phrase(main_drop['time']),
+            'intensity': main_drop['intensity'],
+            'reason': 'Main beat drop'
+        }
+    elif primary_hook:
+        drop_cue = {
+            'time': nearest_phrase(primary_hook['start']),
+            'intensity': 1.0,
+            'reason': 'Primary hook section'
+        }
+    else:
+        # Find highest energy point
+        hop_length = 2048
+        rms = librosa.feature.rms(y=y, hop_length=hop_length)[0]
+        peak_frame = np.argmax(rms)
+        peak_time = librosa.frames_to_time(peak_frame, sr=sr, hop_length=hop_length)
+        drop_cue = {
+            'time': nearest_phrase(float(peak_time)),
+            'intensity': 0.8,
+            'reason': 'Peak energy point'
+        }
+
+    # =========== LOOP POINTS ===========
+    # Safe points to create seamless loops (for extending/shortening)
+
+    loop_points = []
+
+    # Find stable energy sections that align with phrases
+    hop_length = 2048
+    rms = librosa.feature.rms(y=y, hop_length=hop_length)[0]
+
+    for i, phrase_start in enumerate(phrase_boundaries[:-1]):
+        phrase_end = phrase_boundaries[i + 1] if i + 1 < len(phrase_boundaries) else duration
+
+        # Get frames for this phrase
+        start_frame = librosa.time_to_frames(phrase_start, sr=sr, hop_length=hop_length)
+        end_frame = librosa.time_to_frames(phrase_end, sr=sr, hop_length=hop_length)
+
+        if end_frame > start_frame and end_frame <= len(rms):
+            segment_rms = rms[start_frame:end_frame]
+            energy_stability = 1 - (np.std(segment_rms) / (np.mean(segment_rms) + 0.001))
+
+            # Good loops have stable energy and are not in vocal regions
+            is_vocal_free = not any(in_vocal_region(t) for t in [phrase_start, (phrase_start + phrase_end) / 2])
+
+            if energy_stability > 0.7:
+                loop_quality = 'excellent' if is_vocal_free else 'good'
+                loop_points.append({
+                    'start': float(phrase_start),
+                    'end': float(phrase_end),
+                    'bars': 8,
+                    'quality': loop_quality,
+                    'is_vocal_free': is_vocal_free,
+                    'energy_stability': float(energy_stability)
+                })
+
+    # Sort by quality and stability
+    loop_points = sorted(loop_points, key=lambda x: (-1 if x['quality'] == 'excellent' else 0, -x['energy_stability']))[:5]
+
+    # =========== HOT CUES ===========
+    # Quick reference points for live performance
+
+    hot_cues = []
+
+    # Hot Cue 1: Track start / Mix in
+    hot_cues.append({'number': 1, 'time': mix_in['time'], 'label': 'MIX IN', 'color': 'green'})
+
+    # Hot Cue 2: First chorus/pallavi
+    pallavis = sections.get('pallavis', [])
+    if pallavis:
+        hot_cues.append({'number': 2, 'time': nearest_phrase(pallavis[0]['start']), 'label': 'CHORUS 1', 'color': 'blue'})
+
+    # Hot Cue 3: Main drop
+    hot_cues.append({'number': 3, 'time': drop_cue['time'], 'label': 'DROP', 'color': 'red'})
+
+    # Hot Cue 4: Best hook
+    if primary_hook:
+        hot_cues.append({'number': 4, 'time': nearest_phrase(primary_hook['start']), 'label': 'HOOK', 'color': 'yellow'})
+
+    # Hot Cue 5: Mix out
+    hot_cues.append({'number': 5, 'time': mix_out['time'], 'label': 'MIX OUT', 'color': 'orange'})
+
+    return {
+        'mix_in': mix_in,
+        'mix_out': mix_out,
+        'drop': drop_cue,
+        'loop_points': loop_points,
+        'hot_cues': hot_cues,
+        'recommended_mix_duration_bars': 8 if beat_grid.get('is_tempo_stable', True) else 4
+    }
+
+
+# =============================================================================
+# VOCAL-FREE MIX ZONES (ESSENTIAL FOR MASHUPS)
+# =============================================================================
+
+def detect_vocal_free_zones(vocal_regions, phrases, duration):
+    """
+    Identifies zones where there are no vocals - perfect for mixing.
+
+    Vocal clashes are the #1 problem in mashups. These zones tell you
+    exactly where you can safely bring in another track's vocals.
+
+    Returns:
+        dict: Vocal-free zones with mixability ratings
+    """
+    print("  Detecting vocal-free mix zones...")
+
+    phrase_boundaries = phrases.get('8_bar_phrases', [])
+    bar_duration = phrases.get('bar_duration_sec', 2.0)
+
+    # Build vocal timeline
+    vocal_timeline = np.zeros(int(duration * 10))  # 0.1 second resolution
+    for vr in vocal_regions:
+        start_idx = int(vr['start'] * 10)
+        end_idx = int(vr['end'] * 10)
+        vocal_timeline[start_idx:end_idx] = 1
+
+    # Find continuous vocal-free regions
+    vocal_free_zones = []
+    in_free_zone = False
+    zone_start = 0
+
+    for i, has_vocal in enumerate(vocal_timeline):
+        time = i / 10.0
+        if has_vocal == 0 and not in_free_zone:
+            in_free_zone = True
+            zone_start = time
+        elif has_vocal == 1 and in_free_zone:
+            in_free_zone = False
+            zone_end = time
+            zone_duration = zone_end - zone_start
+
+            # Only consider zones longer than 2 bars
+            if zone_duration >= bar_duration * 2:
+                # Find nearest phrase boundaries
+                start_aligned = min(phrase_boundaries, key=lambda p: abs(p - zone_start)) if phrase_boundaries else zone_start
+                end_aligned = min(phrase_boundaries, key=lambda p: abs(p - zone_end)) if phrase_boundaries else zone_end
+
+                # Calculate mixability
+                bars = zone_duration / bar_duration
+                if bars >= 16:
+                    mixability = 'excellent'
+                elif bars >= 8:
+                    mixability = 'good'
+                elif bars >= 4:
+                    mixability = 'fair'
+                else:
+                    mixability = 'tight'
+
+                vocal_free_zones.append({
+                    'start': float(zone_start),
+                    'end': float(zone_end),
+                    'duration': float(zone_duration),
+                    'bars': float(bars),
+                    'phrase_aligned_start': float(start_aligned),
+                    'phrase_aligned_end': float(end_aligned),
+                    'mixability': mixability,
+                    'position': 'intro' if zone_start < duration * 0.15 else ('outro' if zone_end > duration * 0.85 else 'middle')
+                })
+
+    # Handle final zone if song ends without vocals
+    if in_free_zone:
+        zone_end = duration
+        zone_duration = zone_end - zone_start
+        if zone_duration >= bar_duration * 2:
+            bars = zone_duration / bar_duration
+            mixability = 'excellent' if bars >= 16 else ('good' if bars >= 8 else 'fair')
+            vocal_free_zones.append({
+                'start': float(zone_start),
+                'end': float(zone_end),
+                'duration': float(zone_duration),
+                'bars': float(bars),
+                'mixability': mixability,
+                'position': 'outro'
+            })
+
+    # Find the best mix zones
+    intro_zones = [z for z in vocal_free_zones if z['position'] == 'intro']
+    outro_zones = [z for z in vocal_free_zones if z['position'] == 'outro']
+    middle_zones = [z for z in vocal_free_zones if z['position'] == 'middle']
+
+    return {
+        'all_zones': vocal_free_zones,
+        'intro_zones': intro_zones,
+        'outro_zones': outro_zones,
+        'middle_zones': middle_zones,
+        'best_mix_in_zone': max(intro_zones, key=lambda z: z['duration']) if intro_zones else None,
+        'best_mix_out_zone': max(outro_zones, key=lambda z: z['duration']) if outro_zones else None,
+        'total_vocal_free_time': sum(z['duration'] for z in vocal_free_zones),
+        'vocal_free_percentage': sum(z['duration'] for z in vocal_free_zones) / duration * 100 if duration > 0 else 0
+    }
+
+
+# =============================================================================
+# TRANSITION RECOMMENDATIONS
+# =============================================================================
+
+def recommend_transitions(track_analysis, target_bpm_range=None):
+    """
+    Recommends the best transition types for this track.
+
+    Different songs work better with different transition styles.
+    This analyzes the track characteristics and suggests optimal methods.
+
+    Returns:
+        dict: Transition recommendations for mixing in and out
+    """
+    print("  Generating transition recommendations...")
+
+    energy = track_analysis.get('energy', 0.5)
+    has_vocals = track_analysis.get('has_vocals', False)
+    drops = track_analysis.get('hooks_and_drops', {}).get('beat_drops', [])
+    spectral = track_analysis.get('spectral', {})
+    percussion = track_analysis.get('percussion', {})
+
+    bass_class = spectral.get('bass_class', 'balanced')
+    rhythm_density = percussion.get('density_class', 'moderate')
+
+    # MIX IN recommendations
+    mix_in_methods = []
+
+    # High energy tracks: drop swap or cut works well
+    if energy > 0.7:
+        mix_in_methods.append({
+            'method': 'drop_swap',
+            'description': TRANSITION_TYPES['drop_swap'],
+            'confidence': 0.9,
+            'duration_bars': 0  # Instant
+        })
+        mix_in_methods.append({
+            'method': 'eq_swap',
+            'description': TRANSITION_TYPES['eq_swap'],
+            'confidence': 0.85,
+            'duration_bars': 8
+        })
+
+    # Vocal tracks: bring in during instrumental sections
+    if has_vocals:
+        mix_in_methods.append({
+            'method': 'instrumental_blend',
+            'description': TRANSITION_TYPES['instrumental_blend'],
+            'confidence': 0.8,
+            'duration_bars': 16
+        })
+
+    # Bass-heavy tracks: EQ swap is essential
+    if bass_class == 'bass_heavy':
+        mix_in_methods.append({
+            'method': 'eq_swap',
+            'description': TRANSITION_TYPES['eq_swap'],
+            'confidence': 0.95,
+            'duration_bars': 8
+        })
+
+    # Default: crossfade
+    mix_in_methods.append({
+        'method': 'crossfade',
+        'description': TRANSITION_TYPES['crossfade'],
+        'confidence': 0.7,
+        'duration_bars': 8
+    })
+
+    # MIX OUT recommendations
+    mix_out_methods = []
+
+    # If has good drops, can cut out on a drop
+    if drops:
+        mix_out_methods.append({
+            'method': 'drop_swap',
+            'description': 'Cut out as new track drops',
+            'confidence': 0.85,
+            'duration_bars': 0
+        })
+
+    # Echo out works for most tracks
+    mix_out_methods.append({
+        'method': 'echo_out',
+        'description': TRANSITION_TYPES['echo_out'],
+        'confidence': 0.8,
+        'duration_bars': 4
+    })
+
+    # Filter sweep for energetic tracks
+    if energy > 0.6:
+        mix_out_methods.append({
+            'method': 'filter_sweep',
+            'description': TRANSITION_TYPES['filter_sweep'],
+            'confidence': 0.85,
+            'duration_bars': 8
+        })
+
+    # Default crossfade
+    mix_out_methods.append({
+        'method': 'crossfade',
+        'description': TRANSITION_TYPES['crossfade'],
+        'confidence': 0.7,
+        'duration_bars': 8
+    })
+
+    # Sort by confidence
+    mix_in_methods = sorted(mix_in_methods, key=lambda x: -x['confidence'])
+    mix_out_methods = sorted(mix_out_methods, key=lambda x: -x['confidence'])
+
+    return {
+        'mix_in_recommendations': mix_in_methods[:3],  # Top 3
+        'mix_out_recommendations': mix_out_methods[:3],
+        'best_mix_in': mix_in_methods[0] if mix_in_methods else None,
+        'best_mix_out': mix_out_methods[0] if mix_out_methods else None,
+        'ideal_transition_duration_bars': 8 if energy < 0.7 else 4,
+        'notes': []
+    }
+
+
+# =============================================================================
+# ANAND AUDIO SPECIFIC PATTERN DETECTION
+# =============================================================================
+
+def detect_anand_audio_patterns(y, sr, sections, vocal_regions, duration):
+    """
+    Detects patterns specific to Anand Audio / Kannada film songs.
+
+    Anand Audio songs often have:
+    - Movie dialogue intros
+    - Filmi orchestral intros
+    - "Gaana" style high-energy sections
+    - Duet patterns (male-female alternating)
+
+    Returns:
+        dict: Detected Anand Audio specific patterns
+    """
+    print("  Detecting Anand Audio specific patterns...")
+
+    patterns_detected = []
+    song_style = 'unknown'
+
+    intro = sections.get('intro')
+    pallavis = sections.get('pallavis', [])
+    charanams = sections.get('charanams', [])
+    interludes = sections.get('interludes', [])
+
+    # Check for dialogue intro (low energy, speech-like, at the start)
+    if intro and intro['start'] < 5:
+        intro_start = int(intro['start'] * sr)
+        intro_end = int(min(intro['end'], 15) * sr)  # First 15 seconds max
+
+        if intro_end > intro_start:
+            y_intro = y[intro_start:intro_end]
+
+            # Speech detection: low spectral centroid variance, moderate energy
+            spectral_centroid = librosa.feature.spectral_centroid(y=y_intro, sr=sr)[0]
+            centroid_variance = np.var(spectral_centroid)
+
+            # Speech typically has lower variance than music
+            if centroid_variance < 500000:  # Threshold for speech-like content
+                patterns_detected.append({
+                    'pattern': 'dialogue_intro',
+                    'description': ANAND_AUDIO_PATTERNS['dialogue_intro'],
+                    'start': intro['start'],
+                    'end': intro['end'],
+                    'confidence': 0.7
+                })
+
+    # Check for filmi orchestral intro
+    if intro and intro.get('brightness', 0) > 2000 and not intro.get('has_vocals', False):
+        patterns_detected.append({
+            'pattern': 'filmi_intro',
+            'description': ANAND_AUDIO_PATTERNS['filmi_intro'],
+            'start': intro['start'],
+            'end': intro['end'],
+            'confidence': 0.75
+        })
+
+    # Detect song style based on overall characteristics
+    total_energy = sum(s.get('energy', 0) for s in sections.get('sections', [])) / max(len(sections.get('sections', [])), 1)
+
+    if total_energy > 0.6 and len(interludes) >= 2:
+        song_style = 'gaana_style'
+        patterns_detected.append({
+            'pattern': 'gaana_style',
+            'description': ANAND_AUDIO_PATTERNS['gaana_style'],
+            'confidence': 0.8
+        })
+    elif total_energy < 0.4 and len(vocal_regions) > 3:
+        song_style = 'melody_style'
+        patterns_detected.append({
+            'pattern': 'melody_style',
+            'description': ANAND_AUDIO_PATTERNS['melody_style'],
+            'confidence': 0.75
+        })
+
+    # Check for duet pattern (alternating vocal sections)
+    if len(vocal_regions) >= 4:
+        # Look for alternating pattern in vocal regions
+        gaps = []
+        for i in range(len(vocal_regions) - 1):
+            gap = vocal_regions[i + 1]['start'] - vocal_regions[i]['end']
+            gaps.append(gap)
+
+        # Duets typically have regular gaps between vocal sections
+        if len(gaps) >= 3 and np.std(gaps) < np.mean(gaps) * 0.5:
+            patterns_detected.append({
+                'pattern': 'duet_style',
+                'description': ANAND_AUDIO_PATTERNS['duet_style'],
+                'confidence': 0.7
+            })
+
+    # Identify the best sections for showcasing (the "hero" moments)
+    hero_sections = []
+    all_sections = sections.get('sections', [])
+    for sec in all_sections:
+        if sec.get('energy', 0) > total_energy * 1.3:
+            hero_sections.append({
+                'start': sec['start'],
+                'end': sec['end'],
+                'type': sec['section_type'],
+                'energy': sec['energy']
+            })
+
+    return {
+        'detected_patterns': patterns_detected,
+        'song_style': song_style,
+        'has_dialogue_intro': any(p['pattern'] == 'dialogue_intro' for p in patterns_detected),
+        'has_filmi_intro': any(p['pattern'] == 'filmi_intro' for p in patterns_detected),
+        'is_gaana_style': song_style == 'gaana_style',
+        'is_duet': any(p['pattern'] == 'duet_style' for p in patterns_detected),
+        'hero_sections': hero_sections[:3],  # Top 3 energy moments
+        'skip_intro_until': intro['end'] if any(p['pattern'] == 'dialogue_intro' for p in patterns_detected) else 0
+    }
 
 
 # =============================================================================
@@ -945,7 +1722,280 @@ def calculate_kannada_mashup_compatibility(track1, track2):
 
 
 # =============================================================================
-# MAIN EXTENDED ANALYSIS FUNCTION
+# MULTI-TRACK MASHUP PLANNER
+# =============================================================================
+
+def plan_kannada_mashup(all_tracks_analysis, target_duration_minutes=10, style='energetic'):
+    """
+    Plans a complete Kannada mashup from multiple tracks.
+
+    This is the core function for creating professional mashups - it:
+    1. Finds the best track combinations
+    2. Orders them for optimal flow
+    3. Identifies transition points
+    4. Generates a complete mashup timeline
+
+    Args:
+        all_tracks_analysis: List of analysis dicts from analyze_kannada_track_for_mashup
+        target_duration_minutes: Target mashup length
+        style: 'energetic', 'smooth', or 'showcase'
+
+    Returns:
+        dict: Complete mashup plan with timeline
+    """
+    print(f"\n{'='*60}")
+    print("KANNADA MASHUP PLANNER")
+    print(f"Planning {style} mashup from {len(all_tracks_analysis)} tracks")
+    print(f"Target duration: {target_duration_minutes} minutes")
+    print(f"{'='*60}\n")
+
+    if len(all_tracks_analysis) < 2:
+        return {'error': 'Need at least 2 tracks for a mashup'}
+
+    # Calculate all pairwise compatibility scores
+    print("Calculating track compatibility matrix...")
+    compatibility_matrix = {}
+    for i, track1 in enumerate(all_tracks_analysis):
+        for j, track2 in enumerate(all_tracks_analysis):
+            if i != j:
+                key = (track1['filename'], track2['filename'])
+                compatibility_matrix[key] = calculate_kannada_mashup_compatibility(track1, track2)
+
+    # Find best pairs
+    best_pairs = sorted(
+        compatibility_matrix.items(),
+        key=lambda x: x[1]['percentage'],
+        reverse=True
+    )
+
+    print(f"\nTop 5 compatible pairs:")
+    for (t1, t2), compat in best_pairs[:5]:
+        print(f"  {t1} -> {t2}: {compat['percentage']:.1f}% ({compat['grade']})")
+
+    # Build optimal setlist using greedy algorithm
+    target_duration_sec = target_duration_minutes * 60
+    tracks_by_name = {t['filename']: t for t in all_tracks_analysis}
+
+    # Sort tracks by energy for different styles
+    if style == 'energetic':
+        # Start medium, build to high, end high
+        sorted_tracks = sorted(all_tracks_analysis, key=lambda x: x['energy'])
+        start_track = sorted_tracks[len(sorted_tracks) // 3]  # Medium energy start
+    elif style == 'smooth':
+        # Consistent energy throughout
+        avg_energy = sum(t['energy'] for t in all_tracks_analysis) / len(all_tracks_analysis)
+        sorted_tracks = sorted(all_tracks_analysis, key=lambda x: abs(x['energy'] - avg_energy))
+        start_track = sorted_tracks[0]
+    else:  # showcase - feature all hooks
+        # Order by hook score
+        sorted_tracks = sorted(all_tracks_analysis,
+                              key=lambda x: x.get('hooks_and_drops', {}).get('hooks', [{}])[0].get('hook_score', 0) if x.get('hooks_and_drops', {}).get('hooks') else 0,
+                              reverse=True)
+        start_track = sorted_tracks[0]
+
+    # Build setlist
+    setlist = [start_track]
+    remaining = [t for t in all_tracks_analysis if t['filename'] != start_track['filename']]
+    current_duration = 0
+
+    while remaining and current_duration < target_duration_sec:
+        current_track = setlist[-1]
+
+        # Find best next track
+        best_next = None
+        best_score = -1
+
+        for candidate in remaining:
+            key = (current_track['filename'], candidate['filename'])
+            if key in compatibility_matrix:
+                score = compatibility_matrix[key]['percentage']
+
+                # Bonus for energy progression in energetic style
+                if style == 'energetic':
+                    energy_diff = candidate['energy'] - current_track['energy']
+                    if energy_diff > 0:
+                        score += 10  # Reward energy increase
+
+                if score > best_score:
+                    best_score = score
+                    best_next = candidate
+
+        if best_next:
+            setlist.append(best_next)
+            remaining.remove(best_next)
+
+            # Estimate duration (use 60% of each track for energetic, 80% for smooth)
+            clip_ratio = 0.6 if style == 'energetic' else 0.8
+            current_duration += best_next['duration'] * clip_ratio
+        else:
+            break
+
+    # Generate detailed mashup timeline
+    print(f"\nGenerating mashup timeline with {len(setlist)} tracks...")
+    timeline = []
+    mashup_time = 0
+
+    for i, track in enumerate(setlist):
+        # Determine clip points
+        cue_points = track.get('dj_cue_points', {})
+        mix_in = cue_points.get('mix_in', {}).get('time', 0)
+        mix_out = cue_points.get('mix_out', {}).get('time', track['duration'] * 0.8)
+
+        # For energetic style, use shorter clips centered on hooks
+        if style == 'energetic':
+            primary_hook = track.get('hooks_and_drops', {}).get('primary_hook')
+            if primary_hook:
+                # Center clip around hook
+                hook_time = primary_hook['start']
+                clip_duration = min(60, track['duration'] * 0.4)  # Max 60 seconds
+                clip_start = max(0, hook_time - clip_duration / 3)
+                clip_end = min(track['duration'], clip_start + clip_duration)
+            else:
+                clip_start = mix_in
+                clip_end = mix_out
+        else:
+            clip_start = mix_in
+            clip_end = mix_out
+
+        clip_duration = clip_end - clip_start
+
+        # Determine transition to next track
+        if i < len(setlist) - 1:
+            next_track = setlist[i + 1]
+            key = (track['filename'], next_track['filename'])
+            compat = compatibility_matrix.get(key, {})
+
+            # Choose transition type based on compatibility and style
+            if compat.get('percentage', 0) > 70:
+                transition_type = 'eq_swap'
+                transition_bars = 8
+            elif compat.get('percentage', 0) > 50:
+                transition_type = 'filter_sweep'
+                transition_bars = 4
+            else:
+                transition_type = 'drop_swap'
+                transition_bars = 0
+
+            transition_duration = (60 / track['bpm']) * 4 * transition_bars  # Convert bars to seconds
+        else:
+            transition_type = 'fade_out'
+            transition_duration = 4
+            transition_bars = 0
+
+        timeline.append({
+            'position': i + 1,
+            'track': track['filename'],
+            'bpm': track['bpm'],
+            'key': track['key_str'],
+            'energy': track['energy'],
+            'mashup_start_time': mashup_time,
+            'clip_start': float(clip_start),
+            'clip_end': float(clip_end),
+            'clip_duration': float(clip_duration),
+            'transition_to_next': transition_type,
+            'transition_duration': float(transition_duration),
+            'transition_bars': transition_bars,
+            'notes': f"Scale: {track.get('scale', {}).get('scale_name', 'unknown')}, Style: {track.get('anand_audio_patterns', {}).get('song_style', 'unknown')}"
+        })
+
+        mashup_time += clip_duration - transition_duration  # Overlap during transition
+
+    # Calculate final mashup stats
+    total_duration = sum(t['clip_duration'] for t in timeline) - sum(t['transition_duration'] for t in timeline[:-1])
+
+    # Find potential problem areas
+    warnings = []
+    for i in range(len(timeline) - 1):
+        t1 = timeline[i]
+        t2 = timeline[i + 1]
+        bpm_diff = abs(t1['bpm'] - t2['bpm'])
+        if bpm_diff > 8:
+            warnings.append(f"Large BPM jump ({bpm_diff:.1f}) between {t1['track']} and {t2['track']}")
+
+    # Generate mixing instructions
+    mixing_instructions = []
+    for i, item in enumerate(timeline):
+        instruction = {
+            'step': i + 1,
+            'action': f"Play {item['track']}",
+            'start_at': f"{item['clip_start']:.1f}s",
+            'play_until': f"{item['clip_end']:.1f}s",
+        }
+        if i < len(timeline) - 1:
+            instruction['transition'] = f"{item['transition_type']} over {item['transition_bars']} bars into {timeline[i+1]['track']}"
+        else:
+            instruction['transition'] = 'Fade out to end mashup'
+        mixing_instructions.append(instruction)
+
+    return {
+        'style': style,
+        'total_tracks': len(setlist),
+        'estimated_duration_seconds': float(total_duration),
+        'estimated_duration_minutes': float(total_duration / 60),
+        'timeline': timeline,
+        'mixing_instructions': mixing_instructions,
+        'best_pairs': [(t1, t2, c['percentage'], c['grade']) for (t1, t2), c in best_pairs[:10]],
+        'warnings': warnings,
+        'track_order': [t['filename'] for t in setlist],
+        'average_compatibility': sum(compatibility_matrix[(setlist[i]['filename'], setlist[i+1]['filename'])]['percentage']
+                                    for i in range(len(setlist)-1)) / (len(setlist)-1) if len(setlist) > 1 else 0
+    }
+
+
+def generate_mashup_report(mashup_plan):
+    """
+    Generates a human-readable mashup report.
+
+    Returns:
+        str: Formatted report for the DJ
+    """
+    report = []
+    report.append("=" * 60)
+    report.append("KANNADA MASHUP REPORT")
+    report.append("=" * 60)
+    report.append("")
+    report.append(f"Style: {mashup_plan['style'].upper()}")
+    report.append(f"Total Tracks: {mashup_plan['total_tracks']}")
+    report.append(f"Estimated Duration: {mashup_plan['estimated_duration_minutes']:.1f} minutes")
+    report.append(f"Average Compatibility: {mashup_plan['average_compatibility']:.1f}%")
+    report.append("")
+    report.append("-" * 60)
+    report.append("TRACK ORDER")
+    report.append("-" * 60)
+
+    for item in mashup_plan['timeline']:
+        report.append(f"\n{item['position']}. {item['track']}")
+        report.append(f"   BPM: {item['bpm']:.1f} | Key: {item['key']} | Energy: {item['energy']:.2f}")
+        report.append(f"   Play: {item['clip_start']:.1f}s - {item['clip_end']:.1f}s ({item['clip_duration']:.1f}s)")
+        report.append(f"   Transition: {item['transition_to_next']} ({item['transition_bars']} bars)")
+
+    report.append("")
+    report.append("-" * 60)
+    report.append("MIXING INSTRUCTIONS")
+    report.append("-" * 60)
+
+    for instr in mashup_plan['mixing_instructions']:
+        report.append(f"\nStep {instr['step']}: {instr['action']}")
+        report.append(f"  Start at: {instr['start_at']}")
+        report.append(f"  Play until: {instr['play_until']}")
+        report.append(f"  Then: {instr['transition']}")
+
+    if mashup_plan['warnings']:
+        report.append("")
+        report.append("-" * 60)
+        report.append("WARNINGS")
+        report.append("-" * 60)
+        for warning in mashup_plan['warnings']:
+            report.append(f"  ⚠ {warning}")
+
+    report.append("")
+    report.append("=" * 60)
+
+    return "\n".join(report)
+
+
+# =============================================================================
+# MAIN EXTENDED ANALYSIS FUNCTION (V2 with DJ Features)
 # =============================================================================
 
 def analyze_kannada_track_for_mashup(file_path, venv_path=None):
@@ -1019,7 +2069,25 @@ def analyze_kannada_track_for_mashup(file_path, venv_path=None):
     print("\n--- EMOTIONAL INTENSITY ANALYSIS ---")
     emotional_curve = analyze_emotional_curve(y, sr)
 
-    # Compile complete analysis
+    # ========== NEW DJ FEATURES (V2) ==========
+
+    # 12. Beat grid and downbeat detection
+    print("\n--- BEAT GRID DETECTION ---")
+    beat_grid = detect_beat_grid(y, sr)
+
+    # 13. Phrase boundary detection
+    print("\n--- PHRASE BOUNDARY DETECTION ---")
+    phrases = detect_phrase_boundaries(y, sr, beat_grid, duration)
+
+    # 14. Vocal-free mix zones
+    print("\n--- VOCAL-FREE ZONE DETECTION ---")
+    vocal_free_zones = detect_vocal_free_zones(vocal_regions, phrases, duration)
+
+    # 15. Anand Audio specific patterns
+    print("\n--- ANAND AUDIO PATTERN DETECTION ---")
+    anand_patterns = detect_anand_audio_patterns(y, sr, sections, vocal_regions, duration)
+
+    # Compile complete analysis (partial - will add DJ cue points after)
     analysis = {
         # File info
         'file_path': file_path,
@@ -1051,29 +2119,84 @@ def analyze_kannada_track_for_mashup(file_path, venv_path=None):
         'sections': sections,
         'emotional_curve': emotional_curve,
 
-        # Best mix points
-        'best_mix_in_point': sections['intro']['start'] if sections['intro'] else 0,
-        'best_mix_out_point': sections['outro']['start'] if sections['outro'] else duration - 10,
-        'best_hook_time': hooks_drops['primary_hook']['start'] if hooks_drops['primary_hook'] else None,
+        # NEW: DJ-essential features
+        'beat_grid': beat_grid,
+        'phrases': phrases,
+        'vocal_free_zones': vocal_free_zones,
+        'anand_audio_patterns': anand_patterns,
     }
 
-    # Print summary
+    # 16. DJ Cue Points (needs other analysis data)
+    print("\n--- DJ CUE POINT GENERATION ---")
+    dj_cue_points = generate_dj_cue_points(y, sr, beat_grid, phrases, sections, hooks_drops, vocal_regions, duration)
+    analysis['dj_cue_points'] = dj_cue_points
+
+    # 17. Transition recommendations
+    print("\n--- TRANSITION RECOMMENDATIONS ---")
+    transitions = recommend_transitions(analysis)
+    analysis['transition_recommendations'] = transitions
+
+    # Calculate DJ-friendly summary fields
+    analysis['best_mix_in_point'] = dj_cue_points['mix_in']['time']
+    analysis['best_mix_out_point'] = dj_cue_points['mix_out']['time']
+    analysis['best_hook_time'] = hooks_drops['primary_hook']['start'] if hooks_drops['primary_hook'] else None
+    analysis['best_drop_time'] = dj_cue_points['drop']['time']
+    analysis['best_loop'] = dj_cue_points['loop_points'][0] if dj_cue_points['loop_points'] else None
+
+    # Print comprehensive summary
     print(f"\n{'='*60}")
-    print("ANALYSIS SUMMARY")
+    print("KANNADA MASHUP ANALYSIS SUMMARY (V2)")
     print(f"{'='*60}")
-    print(f"BPM: {analysis['bpm']:.1f}")
-    print(f"Key: {analysis['key_str']}")
-    print(f"Energy: {analysis['energy']:.2f}")
-    print(f"Tala: {analysis['tala']['tala_name']} (confidence: {analysis['tala']['confidence']:.2f})")
-    print(f"Scale: {analysis['scale']['scale_name']} ({analysis['scale']['emotional_category']})")
-    print(f"Brightness: {analysis['spectral']['brightness_class']}")
-    print(f"Bass: {analysis['spectral']['bass_class']}")
-    print(f"Rhythm Density: {analysis['percussion']['density_class']}")
-    print(f"Emotional Arc: {analysis['emotional_curve']['arc_type']}")
-    print(f"Hooks Found: {len(analysis['hooks_and_drops']['hooks'])}")
-    print(f"Beat Drops: {analysis['hooks_and_drops']['drop_count']}")
-    print(f"Pallavis (Chorus): {len(analysis['sections']['pallavis'])}")
-    print(f"Charanams (Verse): {len(analysis['sections']['charanams'])}")
+    print(f"\n[BASIC INFO]")
+    print(f"  BPM: {analysis['bpm']:.1f} (Stable: {beat_grid['is_tempo_stable']})")
+    print(f"  Key: {analysis['key_str']}")
+    print(f"  Energy: {analysis['energy']:.2f}")
+    print(f"  Duration: {duration:.1f}s ({duration/60:.1f} min)")
+
+    print(f"\n[KANNADA MUSIC CHARACTERISTICS]")
+    print(f"  Tala: {analysis['tala']['tala_name']} (confidence: {analysis['tala']['confidence']:.2f})")
+    print(f"  Scale: {analysis['scale']['scale_name']} ({analysis['scale']['emotional_category']})")
+    print(f"  Song Style: {anand_patterns['song_style']}")
+    if anand_patterns['has_dialogue_intro']:
+        print(f"  WARNING: Has dialogue intro - skip to {anand_patterns['skip_intro_until']:.1f}s")
+
+    print(f"\n[SPECTRAL PROFILE]")
+    print(f"  Brightness: {analysis['spectral']['brightness_class']}")
+    print(f"  Bass: {analysis['spectral']['bass_class']}")
+    print(f"  Rhythm Density: {analysis['percussion']['density_class']}")
+
+    print(f"\n[SONG STRUCTURE]")
+    print(f"  Emotional Arc: {analysis['emotional_curve']['arc_type']}")
+    print(f"  Hooks Found: {len(analysis['hooks_and_drops']['hooks'])}")
+    print(f"  Beat Drops: {analysis['hooks_and_drops']['drop_count']}")
+    print(f"  Pallavis (Chorus): {len(analysis['sections']['pallavis'])}")
+    print(f"  Charanams (Verse): {len(analysis['sections']['charanams'])}")
+    print(f"  Interludes: {len(analysis['sections']['interludes'])}")
+
+    print(f"\n[DJ CUE POINTS]")
+    print(f"  MIX IN:  {dj_cue_points['mix_in']['time']:.1f}s ({dj_cue_points['mix_in']['reason']})")
+    print(f"  MIX OUT: {dj_cue_points['mix_out']['time']:.1f}s ({dj_cue_points['mix_out']['reason']})")
+    print(f"  DROP:    {dj_cue_points['drop']['time']:.1f}s ({dj_cue_points['drop']['reason']})")
+    if dj_cue_points['loop_points']:
+        best_loop = dj_cue_points['loop_points'][0]
+        print(f"  LOOP:    {best_loop['start']:.1f}s - {best_loop['end']:.1f}s ({best_loop['bars']} bars, {best_loop['quality']})")
+
+    print(f"\n[VOCAL-FREE MIX ZONES]")
+    print(f"  Total vocal-free: {vocal_free_zones['vocal_free_percentage']:.1f}% of track")
+    print(f"  Intro zones: {len(vocal_free_zones['intro_zones'])}")
+    print(f"  Outro zones: {len(vocal_free_zones['outro_zones'])}")
+    print(f"  Middle zones: {len(vocal_free_zones['middle_zones'])}")
+
+    print(f"\n[TRANSITION RECOMMENDATIONS]")
+    print(f"  Best mix-in method: {transitions['best_mix_in']['method']}")
+    print(f"  Best mix-out method: {transitions['best_mix_out']['method']}")
+
+    print(f"\n[PHRASE GRID]")
+    print(f"  First downbeat: {beat_grid['first_downbeat']:.2f}s")
+    print(f"  Bar duration: {phrases.get('bar_duration_sec', 0):.2f}s")
+    print(f"  Primary phrase length: {phrases['primary_phrase_length']} bars")
+    print(f"  8-bar phrases: {len(phrases['8_bar_phrases'])}")
+
     print(f"{'='*60}\n")
 
     return analysis
@@ -1100,28 +2223,131 @@ def analyze_mashup_compatibility(track1_analysis, track2_analysis):
 def main():
     """Command-line interface for Kannada mashup analysis."""
     import argparse
+    import glob
 
     parser = argparse.ArgumentParser(
-        description="Kannada Mashup Analyzer - Deep analysis for Anand Audio style songs"
+        description="Kannada Mashup Analyzer V2 - Professional DJ analysis for Anand Audio style songs",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Analyze a single track
+  python kannada_mashup_analyzer.py song.mp3
+
+  # Compare two tracks for compatibility
+  python kannada_mashup_analyzer.py song1.mp3 --compare song2.mp3
+
+  # Plan a mashup from a directory of songs
+  python kannada_mashup_analyzer.py --mashup-dir ./songs/ --style energetic --duration 10
+
+  # Analyze and save results
+  python kannada_mashup_analyzer.py song.mp3 --output analysis.json
+        """
     )
+
+    # Single file analysis
     parser.add_argument(
         "file_path",
+        nargs='?',
         help="Path to the audio file to analyze"
     )
+
+    # Comparison mode
     parser.add_argument(
         "--compare",
         help="Path to second audio file for compatibility analysis"
     )
+
+    # Mashup planning mode
+    parser.add_argument(
+        "--mashup-dir",
+        help="Directory containing songs for mashup planning"
+    )
+    parser.add_argument(
+        "--style",
+        choices=['energetic', 'smooth', 'showcase'],
+        default='energetic',
+        help="Mashup style (default: energetic)"
+    )
+    parser.add_argument(
+        "--duration",
+        type=int,
+        default=10,
+        help="Target mashup duration in minutes (default: 10)"
+    )
+
+    # Output options
     parser.add_argument(
         "--output",
         help="Output JSON file path for analysis results"
     )
+    parser.add_argument(
+        "--report",
+        help="Output text file path for human-readable mashup report"
+    )
+
+    # Environment
     parser.add_argument(
         "--venv",
         help="Path to virtual environment for Demucs"
     )
 
     args = parser.parse_args()
+
+    # Mashup planning mode
+    if args.mashup_dir:
+        if not os.path.isdir(args.mashup_dir):
+            print(f"Error: Directory not found: {args.mashup_dir}")
+            return
+
+        # Find all MP3 files
+        mp3_files = glob.glob(os.path.join(args.mashup_dir, "*.mp3"))
+        if len(mp3_files) < 2:
+            print(f"Error: Need at least 2 MP3 files for mashup planning. Found: {len(mp3_files)}")
+            return
+
+        print(f"\nFound {len(mp3_files)} tracks for mashup planning")
+        print("=" * 60)
+
+        # Analyze all tracks
+        all_analyses = []
+        for mp3_file in mp3_files:
+            analysis = analyze_kannada_track_for_mashup(mp3_file, args.venv)
+            all_analyses.append(analysis)
+
+        # Plan the mashup
+        mashup_plan = plan_kannada_mashup(
+            all_analyses,
+            target_duration_minutes=args.duration,
+            style=args.style
+        )
+
+        # Generate and print report
+        report = generate_mashup_report(mashup_plan)
+        print(report)
+
+        # Save report if requested
+        if args.report:
+            with open(args.report, 'w') as f:
+                f.write(report)
+            print(f"\nReport saved to {args.report}")
+
+        # Save JSON if requested
+        if args.output:
+            import json
+            output_data = {
+                'analyses': all_analyses,
+                'mashup_plan': mashup_plan
+            }
+            with open(args.output, 'w') as f:
+                json.dump(output_data, f, indent=2, default=str)
+            print(f"Full analysis saved to {args.output}")
+
+        return
+
+    # Single file or comparison mode
+    if not args.file_path:
+        parser.print_help()
+        return
 
     # Run analysis
     analysis1 = analyze_kannada_track_for_mashup(args.file_path, args.venv)
@@ -1141,7 +2367,11 @@ def main():
         print(f"Recommendation: {compatibility['recommendation']}")
         print(f"\nFactor Breakdown:")
         for factor, data in compatibility['factors'].items():
-            print(f"  {factor}: {data['score']} points")
+            print(f"  {factor}: {data.get('score', 'N/A')} points")
+        print(f"\n[SUGGESTED TRANSITION]")
+        print(f"  Mix out of Track 1 at: {analysis1['best_mix_out_point']:.1f}s")
+        print(f"  Mix in Track 2 at: {analysis2['best_mix_in_point']:.1f}s")
+        print(f"  Recommended method: {analysis1['transition_recommendations']['best_mix_out']['method']}")
         print(f"{'='*60}\n")
 
     # Save to file if output path provided
