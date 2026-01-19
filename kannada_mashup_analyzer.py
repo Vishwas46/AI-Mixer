@@ -840,64 +840,68 @@ def detect_anand_audio_patterns(y, sr, sections, vocal_regions, duration):
 
 
 # =============================================================================
-# TALA (RHYTHMIC CYCLE) DETECTION
+# TALA (RHYTHMIC CYCLE) DETECTION - V2 with Beat Grid Cross-Reference
 # =============================================================================
 
-def detect_tala(y, sr, estimated_bpm):
+def detect_tala(y, sr, estimated_bpm, beat_grid=None):
     """
     Detects the probable Tala (rhythmic cycle) of a Kannada song.
 
+    V2 ENHANCEMENT: Cross-references with beat grid for robust detection.
+
     Indian music uses complex rhythmic cycles that don't always fit Western
-    4/4 time. This function analyzes beat patterns to identify the tala.
+    4/4 time. This function analyzes beat patterns, onset strengths, and
+    percussion patterns to identify the tala.
+
+    The detection now uses multiple signals:
+    1. Onset strength accent patterns (original method)
+    2. Beat grid downbeat alignment
+    3. Percussion-isolated accent analysis
+    4. Inter-beat interval patterns
+    5. Cross-validation between methods
+
+    Args:
+        y: Audio signal
+        sr: Sample rate
+        estimated_bpm: BPM from basic analysis
+        beat_grid: Optional beat_grid dict from detect_beat_grid() for cross-reference
 
     Returns:
-        dict: Tala information including name, beats per cycle, and confidence
+        dict: Tala information including name, beats per cycle, confidence, and validation
     """
-    print("  Detecting Tala (rhythmic cycle)...")
+    print("  Detecting Tala (rhythmic cycle) with beat grid cross-reference...")
 
     # Get onset envelope and beats
     onset_env = librosa.onset.onset_strength(y=y, sr=sr)
     tempo, beats = librosa.beat.beat_track(y=y, sr=sr, onset_envelope=onset_env)
+    beat_times = librosa.frames_to_time(beats, sr=sr)
 
     if len(beats) < 16:
         return {
             'tala_name': 'Unknown',
             'beats_per_cycle': 4,
             'confidence': 0.0,
-            'pattern': 'insufficient_data'
+            'detection_method': 'insufficient_data',
+            'cross_validated': False
         }
 
-    # Analyze inter-beat intervals for pattern detection
-    beat_times = librosa.frames_to_time(beats, sr=sr)
-    intervals = np.diff(beat_times)
-
-    # Normalize intervals to detect accents
-    if len(intervals) > 0:
-        mean_interval = np.mean(intervals)
-        normalized_intervals = intervals / mean_interval
-    else:
-        normalized_intervals = np.array([1.0])
-
-    # Get onset strengths at beat positions
+    # =========================================================================
+    # METHOD 1: Onset Strength Accent Pattern Analysis (Original)
+    # =========================================================================
     beat_strengths = onset_env[beats[:-1]] if len(beats) > 1 else np.array([1.0])
 
-    # Score each tala pattern
-    tala_scores = {}
+    onset_tala_scores = {}
     for tala_key, tala_info in TALA_PATTERNS.items():
         cycle_len = tala_info['beats']
 
-        # Check if beats align with this cycle length
         if len(beat_strengths) >= cycle_len * 2:
-            # Reshape into cycles
             num_cycles = len(beat_strengths) // cycle_len
             if num_cycles > 0:
                 cycles = beat_strengths[:num_cycles * cycle_len].reshape(num_cycles, cycle_len)
-
-                # Calculate accent pattern consistency
                 mean_cycle = np.mean(cycles, axis=0)
                 accent_pattern = mean_cycle / np.max(mean_cycle) if np.max(mean_cycle) > 0 else mean_cycle
 
-                # Score based on how well accents match subdivision pattern
+                # Score based on subdivision accent alignment
                 subdivision = tala_info['subdivision']
                 expected_accents = []
                 pos = 0
@@ -908,28 +912,259 @@ def detect_tala(y, sr, estimated_bpm):
                 accent_score = sum(accent_pattern[i] for i in expected_accents if i < len(accent_pattern))
                 consistency = 1 - np.std(cycles, axis=0).mean() if len(cycles) > 1 else 0.5
 
-                tala_scores[tala_key] = (accent_score * consistency, tala_info)
+                onset_tala_scores[tala_key] = accent_score * consistency
 
-    # Find best matching tala
-    if tala_scores:
-        best_tala = max(tala_scores.items(), key=lambda x: x[0])
-        confidence = min(best_tala[1][0] / 5.0, 1.0)  # Normalize confidence
+    # =========================================================================
+    # METHOD 2: Percussion-Isolated Analysis (More Accurate for Film Music)
+    # =========================================================================
+    print("    Analyzing percussion-isolated accents...")
 
-        return {
-            'tala_name': best_tala[1][1]['name'],
-            'tala_key': best_tala[0],
-            'beats_per_cycle': best_tala[1][1]['beats'],
-            'subdivision': best_tala[1][1]['subdivision'],
-            'confidence': float(confidence)
+    # Separate percussive component
+    y_harmonic, y_percussive = librosa.effects.hpss(y)
+
+    # Get onset envelope from percussive component only
+    perc_onset_env = librosa.onset.onset_strength(y=y_percussive, sr=sr)
+
+    # Get percussion onset strengths at beat positions
+    perc_beat_strengths = []
+    for beat_frame in beats[:-1]:
+        if beat_frame < len(perc_onset_env):
+            perc_beat_strengths.append(perc_onset_env[beat_frame])
+    perc_beat_strengths = np.array(perc_beat_strengths) if perc_beat_strengths else np.array([1.0])
+
+    perc_tala_scores = {}
+    for tala_key, tala_info in TALA_PATTERNS.items():
+        cycle_len = tala_info['beats']
+
+        if len(perc_beat_strengths) >= cycle_len * 2:
+            num_cycles = len(perc_beat_strengths) // cycle_len
+            if num_cycles > 0:
+                cycles = perc_beat_strengths[:num_cycles * cycle_len].reshape(num_cycles, cycle_len)
+                mean_cycle = np.mean(cycles, axis=0)
+
+                if np.max(mean_cycle) > 0:
+                    accent_pattern = mean_cycle / np.max(mean_cycle)
+
+                    # Score: how strong are the expected accent positions?
+                    subdivision = tala_info['subdivision']
+                    expected_accents = []
+                    pos = 0
+                    for sub in subdivision:
+                        expected_accents.append(pos)
+                        pos += sub
+
+                    # Calculate accent strength at expected positions vs other positions
+                    accent_positions_strength = np.mean([accent_pattern[i] for i in expected_accents if i < len(accent_pattern)])
+                    other_positions = [i for i in range(cycle_len) if i not in expected_accents]
+                    other_strength = np.mean([accent_pattern[i] for i in other_positions if i < len(accent_pattern)]) if other_positions else 0
+
+                    # Score is higher when accents are at expected positions
+                    contrast = accent_positions_strength - other_strength
+                    perc_tala_scores[tala_key] = max(0, contrast + 0.5)  # Shift to positive range
+
+    # =========================================================================
+    # METHOD 3: Beat Grid Cross-Validation
+    # =========================================================================
+    grid_validation = {}
+
+    if beat_grid:
+        print("    Cross-validating with beat grid...")
+
+        grid_tempo = beat_grid.get('tempo', estimated_bpm)
+        grid_downbeats = beat_grid.get('downbeat_times', [])
+        grid_stability = beat_grid.get('tempo_stability', 0.5)
+        beats_per_bar = beat_grid.get('beats_per_bar', 4)
+
+        # Check if beat grid suggests 4/4 time
+        is_likely_4_4 = beats_per_bar == 4
+
+        # Analyze downbeat intervals for tala cycle hints
+        if len(grid_downbeats) >= 4:
+            downbeat_intervals = np.diff(grid_downbeats)
+            avg_bar_duration = np.mean(downbeat_intervals)
+            beat_duration = 60.0 / grid_tempo
+
+            # How many beats per bar does the grid suggest?
+            implied_beats_per_bar = avg_bar_duration / beat_duration if beat_duration > 0 else 4
+
+            for tala_key, tala_info in TALA_PATTERNS.items():
+                cycle_len = tala_info['beats']
+
+                # Does this tala fit with the beat grid?
+                # Tala cycle should be a multiple of the bar length or vice versa
+                if cycle_len == int(round(implied_beats_per_bar)):
+                    grid_validation[tala_key] = 1.0  # Perfect match
+                elif cycle_len % int(round(implied_beats_per_bar)) == 0:
+                    grid_validation[tala_key] = 0.8  # Tala is multiple of bar
+                elif int(round(implied_beats_per_bar)) % cycle_len == 0:
+                    grid_validation[tala_key] = 0.7  # Bar is multiple of tala
+                elif abs(cycle_len - implied_beats_per_bar) <= 1:
+                    grid_validation[tala_key] = 0.5  # Close enough
+                else:
+                    grid_validation[tala_key] = 0.2  # Poor match with grid
+
+        # Penalize if grid shows unstable tempo
+        if grid_stability < 0.8:
+            for key in grid_validation:
+                grid_validation[key] *= grid_stability
+
+    # =========================================================================
+    # METHOD 4: Inter-Beat Interval Pattern Analysis
+    # =========================================================================
+    print("    Analyzing inter-beat interval patterns...")
+
+    intervals = np.diff(beat_times)
+    interval_tala_scores = {}
+
+    if len(intervals) > 16:
+        # Normalize intervals
+        mean_interval = np.mean(intervals)
+        normalized_intervals = intervals / mean_interval if mean_interval > 0 else intervals
+
+        for tala_key, tala_info in TALA_PATTERNS.items():
+            cycle_len = tala_info['beats']
+            subdivision = tala_info['subdivision']
+
+            # Check if intervals show grouping consistent with subdivision
+            if len(normalized_intervals) >= cycle_len * 2:
+                num_cycles = len(normalized_intervals) // cycle_len
+                cycles = normalized_intervals[:num_cycles * cycle_len].reshape(num_cycles, cycle_len)
+
+                # Calculate variance within each subdivision group
+                group_variances = []
+                pos = 0
+                for sub_len in subdivision:
+                    if pos + sub_len <= cycle_len:
+                        group_data = cycles[:, pos:pos + sub_len].flatten()
+                        if len(group_data) > 1:
+                            group_variances.append(np.var(group_data))
+                    pos += sub_len
+
+                # Lower variance within groups = better match
+                if group_variances:
+                    avg_variance = np.mean(group_variances)
+                    interval_tala_scores[tala_key] = 1.0 / (1.0 + avg_variance * 10)
+
+    # =========================================================================
+    # COMBINE ALL METHODS WITH WEIGHTED SCORING
+    # =========================================================================
+    print("    Combining detection methods...")
+
+    combined_scores = {}
+
+    for tala_key in TALA_PATTERNS.keys():
+        score = 0
+        weights_used = 0
+
+        # Method 1: Onset accent (weight: 1.0)
+        if tala_key in onset_tala_scores:
+            score += onset_tala_scores[tala_key] * 1.0
+            weights_used += 1.0
+
+        # Method 2: Percussion accent (weight: 1.5 - more reliable for film music)
+        if tala_key in perc_tala_scores:
+            score += perc_tala_scores[tala_key] * 1.5
+            weights_used += 1.5
+
+        # Method 3: Beat grid validation (weight: 2.0 - strong signal)
+        if tala_key in grid_validation:
+            score += grid_validation[tala_key] * 2.0
+            weights_used += 2.0
+
+        # Method 4: Interval patterns (weight: 1.0)
+        if tala_key in interval_tala_scores:
+            score += interval_tala_scores[tala_key] * 1.0
+            weights_used += 1.0
+
+        if weights_used > 0:
+            combined_scores[tala_key] = score / weights_used
+
+    # =========================================================================
+    # SELECT BEST TALA WITH CONFIDENCE CALCULATION
+    # =========================================================================
+
+    if combined_scores:
+        # Sort by score
+        sorted_talas = sorted(combined_scores.items(), key=lambda x: -x[1])
+        best_tala_key = sorted_talas[0][0]
+        best_score = sorted_talas[0][1]
+        second_score = sorted_talas[1][1] if len(sorted_talas) > 1 else 0
+
+        # Confidence based on:
+        # 1. Absolute score
+        # 2. Gap between best and second best
+        # 3. Agreement between methods
+        score_confidence = min(best_score / 1.5, 1.0)
+        gap_confidence = (best_score - second_score) / (best_score + 0.01)
+
+        # Check method agreement
+        methods_agree = 0
+        methods_checked = 0
+
+        if best_tala_key in onset_tala_scores:
+            methods_checked += 1
+            if onset_tala_scores[best_tala_key] == max(onset_tala_scores.values()):
+                methods_agree += 1
+
+        if best_tala_key in perc_tala_scores:
+            methods_checked += 1
+            if perc_tala_scores[best_tala_key] == max(perc_tala_scores.values()):
+                methods_agree += 1
+
+        if best_tala_key in grid_validation:
+            methods_checked += 1
+            if grid_validation[best_tala_key] >= 0.7:
+                methods_agree += 1
+
+        agreement_confidence = methods_agree / methods_checked if methods_checked > 0 else 0.5
+
+        # Final confidence
+        confidence = (score_confidence * 0.4 + gap_confidence * 0.3 + agreement_confidence * 0.3)
+        confidence = min(max(confidence, 0.1), 0.95)  # Clamp between 0.1 and 0.95
+
+        # Check for cross-validation
+        cross_validated = (best_tala_key in grid_validation and grid_validation[best_tala_key] >= 0.7)
+
+        best_tala_info = TALA_PATTERNS[best_tala_key]
+
+        # Build detailed result
+        result = {
+            'tala_name': best_tala_info['name'],
+            'tala_key': best_tala_key,
+            'beats_per_cycle': best_tala_info['beats'],
+            'subdivision': best_tala_info['subdivision'],
+            'confidence': float(confidence),
+            'cross_validated': cross_validated,
+            'detection_method': 'multi_method_v2',
+            'method_scores': {
+                'onset_accent': float(onset_tala_scores.get(best_tala_key, 0)),
+                'percussion_accent': float(perc_tala_scores.get(best_tala_key, 0)),
+                'grid_validation': float(grid_validation.get(best_tala_key, 0)),
+                'interval_pattern': float(interval_tala_scores.get(best_tala_key, 0))
+            },
+            'alternative_talas': [
+                {'tala': TALA_PATTERNS[k]['name'], 'score': float(v)}
+                for k, v in sorted_talas[1:4]  # Top 3 alternatives
+            ],
+            'beat_grid_aligned': cross_validated
         }
 
-    # Default to Adi Tala (most common in film music)
+        # Add warning if methods disagree significantly
+        if agreement_confidence < 0.5:
+            result['warning'] = 'Detection methods show disagreement - manual verification recommended'
+
+        return result
+
+    # Default to Adi Tala (most common in Kannada film music)
     return {
         'tala_name': 'Adi Tala (8 beats) - default',
         'tala_key': 'adi_tala',
         'beats_per_cycle': 8,
         'subdivision': [4, 2, 2],
-        'confidence': 0.3
+        'confidence': 0.3,
+        'cross_validated': False,
+        'detection_method': 'fallback_default',
+        'warning': 'Could not reliably detect tala - using common default'
     }
 
 
@@ -2037,43 +2272,43 @@ def analyze_kannada_track_for_mashup(file_path, venv_path=None):
     vocal_regions = analyze_vocal_presence(file_path, venv_path)
     has_vocals = len(vocal_regions) > 0
 
-    # 4. Tala detection
-    print("\n--- TALA DETECTION ---")
-    tala_info = detect_tala(y, sr, base_features['bpm'])
+    # 4. Beat grid detection (MOVED EARLIER for tala cross-reference)
+    print("\n--- BEAT GRID DETECTION ---")
+    beat_grid = detect_beat_grid(y, sr)
 
-    # 5. Scale/Ragam analysis
+    # 5. Tala detection (NOW with beat grid cross-reference)
+    print("\n--- TALA DETECTION (with Beat Grid Cross-Reference) ---")
+    tala_info = detect_tala(y, sr, base_features['bpm'], beat_grid=beat_grid)
+
+    # 6. Scale/Ragam analysis
     print("\n--- SCALE/RAGAM ANALYSIS ---")
     scale_info = detect_scale_profile(y, sr)
 
-    # 6. Hook and beat drop detection
+    # 7. Hook and beat drop detection
     print("\n--- HOOK & BEAT DROP DETECTION ---")
     hooks_drops = detect_hooks_and_drops(y, sr, base_features['structure'])
 
-    # 7. Harmonic rhythm analysis
+    # 8. Harmonic rhythm analysis
     print("\n--- HARMONIC RHYTHM ANALYSIS ---")
     harmonic_rhythm = analyze_harmonic_rhythm(y, sr)
 
-    # 8. Spectral characteristics
+    # 9. Spectral characteristics
     print("\n--- SPECTRAL ANALYSIS ---")
     spectral = analyze_spectral_characteristics(y, sr)
 
-    # 9. Percussion analysis
+    # 10. Percussion analysis
     print("\n--- PERCUSSION ANALYSIS ---")
     percussion = analyze_percussion_patterns(y, sr)
 
-    # 10. Section classification
+    # 11. Section classification
     print("\n--- SECTION CLASSIFICATION ---")
     sections = classify_song_sections(y, sr, base_features['structure'], vocal_regions)
 
-    # 11. Emotional curve
+    # 12. Emotional curve
     print("\n--- EMOTIONAL INTENSITY ANALYSIS ---")
     emotional_curve = analyze_emotional_curve(y, sr)
 
     # ========== NEW DJ FEATURES (V2) ==========
-
-    # 12. Beat grid and downbeat detection
-    print("\n--- BEAT GRID DETECTION ---")
-    beat_grid = detect_beat_grid(y, sr)
 
     # 13. Phrase boundary detection
     print("\n--- PHRASE BOUNDARY DETECTION ---")
@@ -2154,7 +2389,21 @@ def analyze_kannada_track_for_mashup(file_path, venv_path=None):
     print(f"  Duration: {duration:.1f}s ({duration/60:.1f} min)")
 
     print(f"\n[KANNADA MUSIC CHARACTERISTICS]")
-    print(f"  Tala: {analysis['tala']['tala_name']} (confidence: {analysis['tala']['confidence']:.2f})")
+    tala = analysis['tala']
+    cross_val_status = "VERIFIED" if tala.get('cross_validated', False) else "unverified"
+    print(f"  Tala: {tala['tala_name']}")
+    print(f"        Confidence: {tala['confidence']:.2f} ({cross_val_status} with beat grid)")
+    print(f"        Detection: {tala.get('detection_method', 'unknown')}")
+    if 'method_scores' in tala:
+        scores = tala['method_scores']
+        print(f"        Method scores: onset={scores.get('onset_accent', 0):.2f}, "
+              f"perc={scores.get('percussion_accent', 0):.2f}, "
+              f"grid={scores.get('grid_validation', 0):.2f}")
+    if 'alternative_talas' in tala and tala['alternative_talas']:
+        alt = tala['alternative_talas'][0]
+        print(f"        Alternative: {alt['tala']} (score: {alt['score']:.2f})")
+    if 'warning' in tala:
+        print(f"        WARNING: {tala['warning']}")
     print(f"  Scale: {analysis['scale']['scale_name']} ({analysis['scale']['emotional_category']})")
     print(f"  Song Style: {anand_patterns['song_style']}")
     if anand_patterns['has_dialogue_intro']:
