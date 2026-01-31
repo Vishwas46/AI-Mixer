@@ -4,36 +4,77 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Upload, Music, Sparkles, Play, Loader, Check,
   ArrowRight, Info, Zap, Heart, Clock, Volume2,
-  ChevronDown, X, Download
+  ChevronDown, X, Download, Disc3, ListMusic, Mic2
 } from 'lucide-react'
 import AudioPlayer from '../components/AudioPlayer'
 import CompatibilityGraph from '../components/CompatibilityGraph'
 import './Home.css'
 
-// Friendly explanations for technical terms
-const FRIENDLY_TERMS = {
-  bpm: { label: 'Tempo', icon: Clock, desc: 'How fast the song is - songs with similar tempo blend smoothly' },
-  key: { label: 'Musical Key', icon: Music, desc: 'The "home note" - matching keys sound harmonious together' },
-  energy: { label: 'Energy', icon: Zap, desc: 'How intense/powerful the song feels' },
-  mood: { label: 'Mood', icon: Heart, desc: 'The emotional feeling of the song' },
-}
+// Mashup modes with friendly descriptions
+const MASHUP_MODES = [
+  {
+    id: 'quick',
+    name: 'Quick Mashup',
+    icon: Zap,
+    desc: 'Best 2 songs blended together',
+    minSongs: 2,
+  },
+  {
+    id: 'djset',
+    name: 'DJ Set',
+    icon: Disc3,
+    desc: 'All songs mixed into one continuous track',
+    minSongs: 3,
+    styles: [
+      { id: 'relaxed', name: 'Relaxed', desc: 'Smooth, gentle transitions' },
+      { id: 'energetic', name: 'Energetic', desc: 'High-energy, punchy drops' },
+      { id: 'pro', name: 'Pro Mix', desc: 'Complex, DJ-style blends' },
+    ]
+  },
+  {
+    id: 'kannada',
+    name: 'Kannada/Sandalwood',
+    icon: Mic2,
+    desc: 'Optimized for Indian film music with Tala detection',
+    minSongs: 2,
+    styles: [
+      { id: 'energetic', name: 'Energetic', desc: 'High-energy dance mashup' },
+      { id: 'smooth', name: 'Smooth', desc: 'Melodic, flowing transitions' },
+      { id: 'showcase', name: 'Showcase', desc: 'Highlight each song\'s best parts' },
+    ],
+    hasDuration: true
+  }
+]
 
 function Home() {
   const navigate = useNavigate()
   const [songs, setSongs] = useState([])
+  const [selectedMode, setSelectedMode] = useState('quick')
+  const [selectedStyle, setSelectedStyle] = useState('energetic')
+  const [duration, setDuration] = useState(10)
   const [analyzing, setAnalyzing] = useState(false)
   const [analysisProgress, setAnalysisProgress] = useState({ current: 0, total: 0, stage: '' })
   const [analysisResults, setAnalysisResults] = useState(null)
   const [bestMashup, setBestMashup] = useState(null)
   const [creatingMashup, setCreatingMashup] = useState(false)
   const [mashupProgress, setMashupProgress] = useState({ percent: 0, stage: '' })
+  const [mashupResult, setMashupResult] = useState(null)
   const [dragOver, setDragOver] = useState(false)
   const [error, setError] = useState(null)
+
+  const currentMode = MASHUP_MODES.find(m => m.id === selectedMode)
 
   // Fetch existing songs on mount
   useEffect(() => {
     fetchExistingSongs()
   }, [])
+
+  // Reset style when mode changes
+  useEffect(() => {
+    if (currentMode?.styles) {
+      setSelectedStyle(currentMode.styles[0].id)
+    }
+  }, [selectedMode])
 
   const fetchExistingSongs = async () => {
     try {
@@ -66,11 +107,9 @@ function Home() {
       return
     }
 
-    // Add files to list with uploading status
     const newSongs = files.map(f => ({ name: f.name, status: 'uploading', file: f }))
     setSongs(prev => [...prev, ...newSongs])
 
-    // Upload each file
     for (const song of newSongs) {
       try {
         const formData = new FormData()
@@ -103,18 +142,20 @@ function Home() {
     setSongs(prev => prev.filter(s => s.name !== name))
     setAnalysisResults(null)
     setBestMashup(null)
+    setMashupResult(null)
   }
 
-  // Main analysis function - analyzes all songs deeply
+  // Main analysis function
   const analyzeAllSongs = async () => {
     const songsToAnalyze = songs.filter(s => s.status === 'ready' || s.status === 'analyzed')
-    if (songsToAnalyze.length < 2) {
-      setError('Add at least 2 songs to create a mashup')
+    if (songsToAnalyze.length < currentMode.minSongs) {
+      setError(`Add at least ${currentMode.minSongs} songs for ${currentMode.name}`)
       return
     }
 
     setAnalyzing(true)
     setError(null)
+    setMashupResult(null)
     setAnalysisProgress({ current: 0, total: songsToAnalyze.length, stage: 'Starting deep analysis...' })
 
     const results = []
@@ -127,13 +168,11 @@ function Home() {
         stage: `Listening to "${song.name.replace('.mp3', '')}"...`
       })
 
-      // Update song status
       setSongs(prev => prev.map(s =>
         s.name === song.name ? { ...s, status: 'analyzing' } : s
       ))
 
       try {
-        // Start Kannada analysis (deep analysis)
         const res = await fetch('/api/analyze/kannada', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -141,7 +180,6 @@ function Home() {
         })
         const taskData = await res.json()
 
-        // Poll for completion
         let analysis = null
         while (true) {
           await new Promise(r => setTimeout(r, 1000))
@@ -155,15 +193,16 @@ function Home() {
             throw new Error(status.error || 'Analysis failed')
           }
 
-          // Update progress stage based on logs
           if (status.log && status.log.length > 0) {
             const lastLog = status.log[status.log.length - 1]
             if (lastLog.includes('beat')) {
-              setAnalysisProgress(prev => ({ ...prev, stage: `Finding the rhythm in "${song.name.replace('.mp3', '')}"...` }))
+              setAnalysisProgress(prev => ({ ...prev, stage: `Finding the rhythm...` }))
             } else if (lastLog.includes('vocal')) {
-              setAnalysisProgress(prev => ({ ...prev, stage: `Detecting vocals in "${song.name.replace('.mp3', '')}"...` }))
-            } else if (lastLog.includes('tala') || lastLog.includes('scale')) {
-              setAnalysisProgress(prev => ({ ...prev, stage: `Understanding the musical structure...` }))
+              setAnalysisProgress(prev => ({ ...prev, stage: `Detecting vocals...` }))
+            } else if (lastLog.includes('tala')) {
+              setAnalysisProgress(prev => ({ ...prev, stage: `Detecting Tala pattern...` }))
+            } else if (lastLog.includes('scale')) {
+              setAnalysisProgress(prev => ({ ...prev, stage: `Analyzing musical scale...` }))
             }
           }
         }
@@ -181,7 +220,6 @@ function Home() {
       }
     }
 
-    // Calculate compatibility and find best mashup
     setAnalysisProgress({ current: songsToAnalyze.length, total: songsToAnalyze.length, stage: 'Finding the perfect combinations...' })
 
     const analyzedSongs = results.filter(s => s.analysis)
@@ -189,7 +227,6 @@ function Home() {
       const compatibilityData = calculateCompatibility(analyzedSongs)
       setAnalysisResults(compatibilityData)
 
-      // Find best pair
       const bestPair = compatibilityData.connections.reduce((best, conn) =>
         conn.score > (best?.score || 0) ? conn : best
       , null)
@@ -207,7 +244,6 @@ function Home() {
     setAnalyzing(false)
   }
 
-  // Calculate compatibility between all song pairs
   const calculateCompatibility = (analyzedSongs) => {
     const connections = []
 
@@ -223,7 +259,6 @@ function Home() {
         const reasons = []
         let score = 0
 
-        // BPM compatibility (0-30 points)
         const bpm1 = a1.bpm || a1.beat_grid?.tempo || 120
         const bpm2 = a2.bpm || a2.beat_grid?.tempo || 120
         const bpmDiff = Math.abs(bpm1 - bpm2)
@@ -245,14 +280,12 @@ function Home() {
           reasons.push({ type: 'tempo', text: 'Different tempos', good: false })
         }
 
-        // Key compatibility (0-30 points)
         const key1 = a1.key || 'C'
         const key2 = a2.key || 'C'
         const keyMatch = checkKeyCompatibility(key1, key2)
         score += keyMatch.score
         reasons.push({ type: 'key', text: keyMatch.reason, good: keyMatch.score >= 20 })
 
-        // Energy compatibility (0-20 points)
         const energy1 = a1.emotional_curve?.average_intensity || 0.5
         const energy2 = a2.emotional_curve?.average_intensity || 0.5
         const energyDiff = Math.abs(energy1 - energy2)
@@ -268,12 +301,11 @@ function Home() {
           reasons.push({ type: 'energy', text: 'Different energy - creates contrast', good: false })
         }
 
-        // Tala/rhythm compatibility (0-20 points)
         const tala1 = a1.tala?.detected_tala
         const tala2 = a2.tala?.detected_tala
         if (tala1 && tala2 && tala1 === tala2) {
           score += 20
-          reasons.push({ type: 'rhythm', text: `Same rhythm pattern (${tala1})`, good: true })
+          reasons.push({ type: 'rhythm', text: `Same Tala (${tala1})`, good: true })
         } else if (a1.beat_grid?.is_tempo_stable && a2.beat_grid?.is_tempo_stable) {
           score += 15
           reasons.push({ type: 'rhythm', text: 'Both have steady beats', good: true })
@@ -299,7 +331,6 @@ function Home() {
   }
 
   const checkKeyCompatibility = (key1, key2) => {
-    // Simplified key compatibility check
     const keys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
     const k1 = key1.replace('m', '').replace(' minor', '').replace(' major', '')
     const k2 = key2.replace('m', '').replace(' minor', '').replace(' major', '')
@@ -319,33 +350,76 @@ function Home() {
     return { score: 10, reason: 'Different keys - may need careful mixing' }
   }
 
-  // Create the best mashup
-  const createBestMashup = async () => {
-    if (!bestMashup) return
-
+  // Create mashup based on selected mode
+  const createMashup = async () => {
     setCreatingMashup(true)
-    setMashupProgress({ percent: 0, stage: 'Starting to create your mashup...' })
+    setMashupProgress({ percent: 0, stage: 'Starting...' })
     setError(null)
 
     try {
-      const res = await fetch('/api/mashup/single', {
+      let endpoint, body, friendlyStages
+
+      if (selectedMode === 'quick') {
+        if (!bestMashup) {
+          throw new Error('No compatible songs found')
+        }
+        endpoint = '/api/mashup/single'
+        body = {
+          songA: bestMashup.song1.name,
+          songB: bestMashup.song2.name,
+          output_name: `mashup_${Date.now()}`
+        }
+        friendlyStages = [
+          'Analyzing song structures...',
+          'Finding the best blend points...',
+          'Matching tempos and keys...',
+          'Creating smooth transitions...',
+          'Polishing the final mix...'
+        ]
+      } else if (selectedMode === 'djset') {
+        endpoint = '/api/mashup/djset'
+        body = {
+          songs_dir: 'songs',
+          mix_style: selectedStyle
+        }
+        friendlyStages = [
+          'Planning the setlist order...',
+          'Analyzing transitions between songs...',
+          `Applying ${selectedStyle} mixing style...`,
+          'Creating seamless transitions...',
+          'Building the continuous mix...',
+          'Finalizing your DJ set...'
+        ]
+      } else if (selectedMode === 'kannada') {
+        const analyzedSongs = songs.filter(s => s.status === 'analyzed')
+        endpoint = '/api/mashup/sandalwood'
+        body = {
+          filenames: analyzedSongs.map(s => s.name),
+          style: selectedStyle,
+          duration: duration
+        }
+        friendlyStages = [
+          'Deep analyzing Kannada music patterns...',
+          'Detecting Tala and Ragam...',
+          'Finding Pallavi and Charanam sections...',
+          `Planning ${selectedStyle} style mashup...`,
+          'Creating the perfect Sandalwood mix...',
+          'Generating mashup report...'
+        ]
+      }
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          song1: bestMashup.song1.name,
-          song2: bestMashup.song2.name
-        })
+        body: JSON.stringify(body)
       })
-      const taskData = await res.json()
 
-      // Poll for completion with friendly messages
-      const stages = [
-        'Analyzing song structures...',
-        'Finding the best blend points...',
-        'Matching tempos and keys...',
-        'Creating smooth transitions...',
-        'Polishing the final mix...'
-      ]
+      if (!res.ok) {
+        const errData = await res.json()
+        throw new Error(errData.detail || 'Failed to start mashup')
+      }
+
+      const taskData = await res.json()
       let stageIndex = 0
 
       while (true) {
@@ -355,18 +429,21 @@ function Home() {
 
         if (status.status === 'completed') {
           setMashupProgress({ percent: 100, stage: 'Your mashup is ready!' })
-          setBestMashup(prev => ({ ...prev, outputFile: status.result?.output_file }))
+          setMashupResult({
+            mode: selectedMode,
+            style: selectedStyle,
+            ...status.result
+          })
           break
         } else if (status.status === 'failed') {
-          throw new Error(status.error || 'Failed to create mashup')
+          throw new Error(status.error || 'Mashup creation failed')
         }
 
-        // Update progress with friendly stages
-        const percent = Math.min(95, (status.progress || 0))
-        if (percent > (stageIndex + 1) * 20 && stageIndex < stages.length - 1) {
+        const percent = Math.min(95, status.progress || (stageIndex / friendlyStages.length) * 100)
+        if (percent > ((stageIndex + 1) / friendlyStages.length) * 100 && stageIndex < friendlyStages.length - 1) {
           stageIndex++
         }
-        setMashupProgress({ percent, stage: stages[stageIndex] })
+        setMashupProgress({ percent, stage: friendlyStages[stageIndex] })
       }
     } catch (err) {
       setError(err.message)
@@ -376,6 +453,7 @@ function Home() {
   }
 
   const readySongs = songs.filter(s => s.status === 'ready' || s.status === 'analyzed')
+  const canAnalyze = readySongs.length >= currentMode.minSongs
 
   return (
     <div className="home-page">
@@ -391,7 +469,7 @@ function Home() {
             Create Amazing Mashups
           </h1>
           <p className="hero-subtitle">
-            Drop your songs below. We'll find the perfect combinations and create a professional mashup for you.
+            Drop your songs, pick a style, and let AI create the perfect mix
           </p>
         </motion.div>
       </section>
@@ -434,6 +512,7 @@ function Home() {
                         <span className="song-meta-mini">
                           {Math.round(song.analysis.bpm || song.analysis.beat_grid?.tempo || 0)} BPM
                           {song.analysis.key && ` • ${song.analysis.key}`}
+                          {song.analysis.tala?.detected_tala && ` • ${song.analysis.tala.detected_tala}`}
                         </span>
                       )}
                       {song.status === 'analyzing' && (
@@ -459,15 +538,77 @@ function Home() {
         </div>
 
         {error && (
-          <motion.div
-            className="error-message"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-          >
+          <motion.div className="error-message" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             {error}
           </motion.div>
         )}
       </section>
+
+      {/* Mode Selection */}
+      {songs.length >= 2 && (
+        <section className="mode-section">
+          <h2 className="section-title">Choose Your Style</h2>
+          <div className="mode-cards">
+            {MASHUP_MODES.map(mode => (
+              <motion.div
+                key={mode.id}
+                className={`mode-card glass-card ${selectedMode === mode.id ? 'active' : ''} ${readySongs.length < mode.minSongs ? 'disabled' : ''}`}
+                onClick={() => readySongs.length >= mode.minSongs && setSelectedMode(mode.id)}
+                whileHover={{ scale: readySongs.length >= mode.minSongs ? 1.02 : 1 }}
+                whileTap={{ scale: readySongs.length >= mode.minSongs ? 0.98 : 1 }}
+              >
+                <mode.icon size={28} className="mode-icon" />
+                <h3>{mode.name}</h3>
+                <p>{mode.desc}</p>
+                {readySongs.length < mode.minSongs && (
+                  <span className="mode-requirement">Needs {mode.minSongs}+ songs</span>
+                )}
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Style Options */}
+          {currentMode.styles && (
+            <div className="style-options glass-card">
+              <h3>
+                {selectedMode === 'kannada' ? 'Mashup Style' : 'Mix Style'}
+              </h3>
+              <div className="style-buttons">
+                {currentMode.styles.map(style => (
+                  <button
+                    key={style.id}
+                    className={`style-btn ${selectedStyle === style.id ? 'active' : ''}`}
+                    onClick={() => setSelectedStyle(style.id)}
+                  >
+                    <span className="style-name">{style.name}</span>
+                    <span className="style-desc">{style.desc}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Duration for Kannada mode */}
+              {currentMode.hasDuration && (
+                <div className="duration-option">
+                  <label>
+                    <Clock size={16} />
+                    Target Duration
+                  </label>
+                  <div className="duration-input">
+                    <input
+                      type="range"
+                      min="5"
+                      max="30"
+                      value={duration}
+                      onChange={e => setDuration(Number(e.target.value))}
+                    />
+                    <span className="duration-value">{duration} minutes</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Analysis Section */}
       {songs.length >= 2 && !analysisResults && (
@@ -475,7 +616,7 @@ function Home() {
           <motion.button
             className="btn btn-primary btn-large analyze-btn"
             onClick={analyzeAllSongs}
-            disabled={analyzing || readySongs.length < 2}
+            disabled={analyzing || !canAnalyze}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
@@ -487,7 +628,7 @@ function Home() {
             ) : (
               <>
                 <Sparkles size={20} />
-                Analyze & Find Best Mashup
+                Analyze Songs & Find Best Matches
               </>
             )}
           </motion.button>
@@ -511,10 +652,7 @@ function Home() {
       {/* Results Section */}
       {analysisResults && (
         <section className="results-section">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
             {/* Compatibility Graph */}
             <div className="compatibility-section glass-card">
               <h2 className="section-title">
@@ -527,82 +665,62 @@ function Home() {
               <CompatibilityGraph data={analysisResults} />
             </div>
 
-            {/* Best Mashup Recommendation */}
-            {bestMashup && (
+            {/* Create Mashup Button */}
+            {!mashupResult ? (
               <motion.div
-                className="best-mashup-card glass-card"
+                className="create-mashup-card glass-card"
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.3 }}
               >
-                <div className="best-header">
-                  <Sparkles className="best-icon" />
+                <div className="create-header">
+                  <currentMode.icon size={32} className="create-icon" />
                   <div>
-                    <h2>Best Mashup Found!</h2>
-                    <p className="compatibility-score">
-                      {bestMashup.score}% Compatible
-                    </p>
-                  </div>
-                </div>
-
-                <div className="best-songs">
-                  <div className="best-song">
-                    <Music size={24} />
-                    <span>{bestMashup.song1.name.replace('.mp3', '')}</span>
-                  </div>
-                  <div className="best-connector">+</div>
-                  <div className="best-song">
-                    <Music size={24} />
-                    <span>{bestMashup.song2.name.replace('.mp3', '')}</span>
-                  </div>
-                </div>
-
-                <div className="reasons-list">
-                  {bestMashup.reasons.map((reason, i) => (
-                    <div key={i} className={`reason-item ${reason.good ? 'good' : 'neutral'}`}>
-                      {reason.good ? <Check size={16} /> : <Info size={16} />}
-                      <span>{reason.text}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {!bestMashup.outputFile ? (
-                  <motion.button
-                    className="btn btn-primary btn-large create-btn"
-                    onClick={createBestMashup}
-                    disabled={creatingMashup}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    {creatingMashup ? (
-                      <>
-                        <Loader className="spin" size={20} />
-                        {mashupProgress.stage}
-                      </>
-                    ) : (
-                      <>
-                        <Zap size={20} />
-                        Create This Mashup
-                      </>
+                    <h2>Ready to Create Your {currentMode.name}</h2>
+                    {bestMashup && selectedMode === 'quick' && (
+                      <p className="best-match-hint">
+                        Best match: {bestMashup.song1.name.replace('.mp3', '')} + {bestMashup.song2.name.replace('.mp3', '')} ({bestMashup.score}%)
+                      </p>
                     )}
-                  </motion.button>
-                ) : (
-                  <div className="mashup-ready">
-                    <div className="ready-badge">
-                      <Check size={20} />
-                      Your mashup is ready!
-                    </div>
-                    <AudioPlayer src={`/remix_outputs/${bestMashup.outputFile}`} />
-                    <a
-                      href={`/remix_outputs/${bestMashup.outputFile}`}
-                      download
-                      className="btn btn-secondary"
-                    >
-                      <Download size={18} />
-                      Download Mashup
-                    </a>
+                    {selectedMode !== 'quick' && (
+                      <p className="style-hint">
+                        Style: <strong>{currentMode.styles?.find(s => s.id === selectedStyle)?.name}</strong>
+                        {currentMode.hasDuration && ` • ${duration} minutes`}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {bestMashup && selectedMode === 'quick' && (
+                  <div className="reasons-list">
+                    {bestMashup.reasons.map((reason, i) => (
+                      <div key={i} className={`reason-item ${reason.good ? 'good' : 'neutral'}`}>
+                        {reason.good ? <Check size={16} /> : <Info size={16} />}
+                        <span>{reason.text}</span>
+                      </div>
+                    ))}
                   </div>
                 )}
+
+                <motion.button
+                  className="btn btn-primary btn-large create-btn"
+                  onClick={createMashup}
+                  disabled={creatingMashup}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  {creatingMashup ? (
+                    <>
+                      <Loader className="spin" size={20} />
+                      {mashupProgress.stage}
+                    </>
+                  ) : (
+                    <>
+                      <Zap size={20} />
+                      Create {currentMode.name}
+                    </>
+                  )}
+                </motion.button>
 
                 {creatingMashup && (
                   <div className="mashup-progress">
@@ -614,6 +732,66 @@ function Home() {
                     </div>
                   </div>
                 )}
+              </motion.div>
+            ) : (
+              <motion.div
+                className="mashup-result-card glass-card"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+              >
+                <div className="result-header">
+                  <Check size={32} className="result-icon" />
+                  <div>
+                    <h2>Your {currentMode.name} is Ready!</h2>
+                    <p className="result-meta">
+                      {mashupResult.style && `Style: ${mashupResult.style}`}
+                      {mashupResult.track_count && ` • ${mashupResult.track_count} tracks`}
+                    </p>
+                  </div>
+                </div>
+
+                {mashupResult.output_filename && (
+                  <>
+                    <AudioPlayer src={`/remix_outputs/${mashupResult.output_filename}`} />
+                    <div className="result-actions">
+                      <a
+                        href={`/remix_outputs/${mashupResult.output_filename}`}
+                        download
+                        className="btn btn-primary"
+                      >
+                        <Download size={18} />
+                        Download Audio
+                      </a>
+                    </div>
+                  </>
+                )}
+
+                {mashupResult.report_filename && (
+                  <div className="report-section">
+                    <h3>Mashup Report</h3>
+                    <p className="report-desc">
+                      Detailed breakdown of transitions, timing, and song order
+                    </p>
+                    <a
+                      href={`/remix_outputs/${mashupResult.report_filename}`}
+                      download
+                      className="btn btn-secondary"
+                    >
+                      <Download size={18} />
+                      Download Report
+                    </a>
+                  </div>
+                )}
+
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setMashupResult(null)
+                    setAnalysisResults(null)
+                  }}
+                >
+                  Create Another Mashup
+                </button>
               </motion.div>
             )}
 
@@ -651,17 +829,17 @@ function Home() {
             <div className="step">
               <div className="step-icon">1</div>
               <h3>Drop Your Songs</h3>
-              <p>Add 2 or more songs you want to mashup</p>
+              <p>Add 2+ Kannada or any songs you want to mashup</p>
             </div>
             <div className="step">
               <div className="step-icon">2</div>
-              <h3>AI Analyzes</h3>
-              <p>We detect tempo, key, energy & find the best matches</p>
+              <h3>Pick Your Style</h3>
+              <p>Quick blend, DJ set, or Sandalwood-optimized mix</p>
             </div>
             <div className="step">
               <div className="step-icon">3</div>
               <h3>Get Your Mashup</h3>
-              <p>One click to create a professional mashup</p>
+              <p>AI analyzes and creates the perfect mix</p>
             </div>
           </div>
         </section>
