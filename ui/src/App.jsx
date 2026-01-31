@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom'
 import Navbar from './components/Navbar'
+import Home from './pages/Home'
 import Library from './pages/Library'
 import Studio from './pages/Studio'
 import Results from './pages/Results'
@@ -11,7 +12,8 @@ function App() {
       <Navbar />
       <main className="main-content">
         <Routes>
-          <Route path="/" element={<Library />} />
+          <Route path="/" element={<Home />} />
+          <Route path="/library" element={<Library />} />
           <Route path="/studio" element={<Studio />} />
           <Route path="/results" element={<Results />} />
         </Routes>
