@@ -685,18 +685,17 @@ async def mashup_sandalwood(req: SandalwoodMashupRequest):
             print(f"[{idx + 1}/{total}] Deep analysis: {fn}")
             analysis = analyze_kannada_track_for_mashup(fpath, venv_path)
             all_tracks.append(analysis)
-            task["progress"] = int(((idx + 1) / total) * 70)  # 0-70% for analysis
+            task["progress"] = int(((idx + 1) / total) * 50)  # 0-50% for analysis
 
         # Step 2: Plan the mashup
         print("Planning mashup order and transitions...")
-        task["progress"] = 75
+        task["progress"] = 55
         mashup_plan = plan_kannada_mashup(all_tracks, req.duration, req.style)
-        task["progress"] = 90
+        task["progress"] = 60
 
         # Step 3: Generate human-readable report
         print("Generating mashup report...")
         report = generate_mashup_report(mashup_plan)
-        task["progress"] = 95
 
         # Save report to file
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -704,6 +703,52 @@ async def mashup_sandalwood(req: SandalwoodMashupRequest):
         report_path = os.path.join(OUTPUT_DIR, report_filename)
         with open(report_path, "w") as f:
             f.write(report)
+        task["progress"] = 65
+
+        # Step 4: Convert analysis to setlist format for audio creation
+        print("Preparing to create audio mashup...")
+        track_order = mashup_plan.get('track_order', [fn for fn in req.filenames])
+        tracks_by_name = {t['filename']: t for t in all_tracks}
+
+        setlist = []
+        for fn in track_order:
+            track = tracks_by_name.get(fn)
+            if track:
+                setlist.append({
+                    'path': track['file_path'],
+                    'filename': track['filename'],
+                    'bpm': track['bpm'],
+                    'key': track['key'],
+                    'energy': track['energy'],
+                    'duration': track['duration'],
+                    'structure': track['structure'],
+                })
+
+        task["progress"] = 70
+
+        # Step 5: Create the actual audio mashup
+        print(f"Creating {req.style} audio mashup from {len(setlist)} tracks...")
+
+        # Map Kannada styles to DJ set styles
+        mix_style_map = {
+            'energetic': 'energetic',
+            'smooth': 'relaxed',
+            'showcase': 'pro',
+        }
+        mix_style = mix_style_map.get(req.style, 'energetic')
+
+        # Create the continuous mix
+        output_filename = f"kannada_mashup_{req.style}_{timestamp}.mp3"
+        create_continuous_mix_from_setlist(setlist, mix_style, OUTPUT_DIR)
+        task["progress"] = 95
+
+        # Find the created output file (it uses a different naming convention)
+        output_files = sorted(
+            [f for f in os.listdir(OUTPUT_DIR) if f.startswith("ai_dj_set_") and f.endswith(".mp3")],
+            key=lambda f: os.path.getmtime(os.path.join(OUTPUT_DIR, f)),
+            reverse=True,
+        )
+        actual_output = output_files[0] if output_files else None
 
         # Also cache analyses
         cache = _load_analysis_cache()
@@ -711,12 +756,14 @@ async def mashup_sandalwood(req: SandalwoodMashupRequest):
             cache[track["file_path"]] = track
         _save_analysis_cache(cache)
 
-        print(f"Mashup planning complete. Report saved to {report_filename}")
+        print(f"Mashup complete! Audio: {actual_output}, Report: {report_filename}")
         return {
             "plan": mashup_plan,
             "report": report,
             "report_filename": report_filename,
+            "output_filename": actual_output,
             "track_count": len(all_tracks),
+            "style": req.style,
         }
 
     _run_in_background(task, _do_sandalwood_mashup)
