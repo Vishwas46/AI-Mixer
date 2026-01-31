@@ -1,103 +1,243 @@
 # AI-Mixer
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
+![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)
 
-**AI-Mixer** is a powerful, local-first command-line tool that intelligently remixes and mashes up songs using artificial intelligence. It leverages advanced audio processing libraries to separate vocals and instrumentals, analyze musical structure, and create seamless, beat-matched DJ mixes automatically.
+**AI-Mixer** is a powerful, local-first tool for intelligently remixing and mashing up songs using AI. It features advanced audio analysis including **Indian music Tala detection**, a beautiful **Web UI**, and professional DJ mixing capabilities.
 
-## 🚀 Features
+## What's New in V2
 
-*   **Single Mashup Mode:** Create a classic mashup by blending the vocals of one track with the instrumental of another.
-*   **AI DJ Set Mode:** Automatically generate a continuous, multi-song DJ set from a directory of MP3s.
-    *   **Deep Analysis:** Analyzes BPM, key, energy, and structural segments (intro, verse, chorus) using local processing.
-    *   **Smart Curation:** Curates a setlist based on harmonic mixing rules and energy flow.
-    *   **Mix Styles:** Choose from `relaxed` (full length), `energetic` (highlight reel), or `pro` (phrase-matched) mixing styles.
-*   **Local-First Privacy:** No external APIs required. All analysis happens locally on your machine, ensuring privacy and reliability.
-*   **High-Quality Separation:** Uses **Demucs** for state-of-the-art source separation.
-*   **Intelligent Clipping:** Automatically identifies the most "mixable" and loopable sections of tracks for high-energy mixes.
+- **Web UI** - Beautiful drag-and-drop interface with dark glassmorphism theme
+- **Kannada/Sandalwood Mode** - Optimized for Indian film music with Tala & Ragam detection
+- **Visual Compatibility Graph** - See how your songs connect at a glance
+- **One-Click Mashups** - Drop songs, pick a style, get your mix
 
-## 🛠️ Installation
+## Features
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/Vishwas46/AI-Mixer.git
-    cd AI-Mixer
-    ```
+### Core Mixing Modes
 
-2.  **Set up a Virtual Environment:**
-    It is highly recommended to use a virtual environment to manage dependencies.
-    ```bash
-    # Create venv
-    python3 -m venv venv
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **Quick Mashup** | Blend vocals of Song A with instrumental of Song B | Classic mashup creation |
+| **DJ Set** | All songs mixed into one continuous track | Party mixes, podcasts |
+| **Kannada/Sandalwood** | Indian film music optimized with Tala detection | Bollywood/Sandalwood mashups |
 
-    # Activate venv
-    # On macOS/Linux:
-    source venv/bin/activate
-    # On Windows:
-    .\venv\Scripts\activate
-    ```
+### Advanced Analysis
 
-3.  **Install Dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+- **Beat Grid Detection** - Precise BPM with downbeat alignment
+- **Tala Detection** - Identifies Indian rhythmic cycles (Adi Tala, Rupaka, Mishra Chapu, etc.)
+- **Scale/Ragam Analysis** - Detects Kannada musical scales (Mohanam, Kalyani, etc.)
+- **Vocal-Free Zone Detection** - Finds safe mix points without vocal clashes
+- **DJ Cue Points** - Auto-generates MIX IN, MIX OUT, DROP, LOOP points
+- **Phrase Boundaries** - Identifies 4/8/16/32 bar musical phrases
+- **Emotional Intensity Curve** - Maps energy flow throughout the song
 
-    *Note: You will also need `ffmpeg` installed on your system for audio processing.*
+### Mixing Styles
 
-## 🎧 Usage
+**DJ Set Styles:**
+- `relaxed` - Full-length tracks with smooth 8-bar transitions
+- `energetic` - Highlight reels with punchy drops
+- `pro` - Professional phrase-matched mixing
 
-The main entry point is `creative_remix.py`.
+**Kannada/Sandalwood Styles:**
+- `energetic` - High-energy dance mashup, builds progressively
+- `smooth` - Melodic flowing transitions, consistent energy
+- `showcase` - Features the best hooks from each song
 
-### 1. Create a Single Mashup
-Mix the vocals of Song A with the instrumental of Song B.
+## Installation
+
+### 1. Clone & Setup
 
 ```bash
-python creative_remix.py --mode single_mashup --songA_path "path/to/vocals_song.mp3" --songB_path "path/to/instrumental_song.mp3" --out "my_mashup.mp3"
+git clone https://github.com/Vishwas46/AI-Mixer.git
+cd AI-Mixer
+
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate  # Windows: .\venv\Scripts\activate
+
+# Install Python dependencies
+pip install -r requirements.txt
 ```
 
-### 2. Generate an AI DJ Set
-Create a seamless mix from a folder of songs.
+### 2. Install ffmpeg
 
 ```bash
-# Standard mix (Relaxed style)
-python creative_remix.py --mode dj_set --songs_dir "songs/" --mix_style relaxed
+# macOS
+brew install ffmpeg
 
-# High-energy megamix (Energetic style)
-python creative_remix.py --mode dj_set --songs_dir "songs/" --mix_style energetic
+# Ubuntu/Debian
+sudo apt install ffmpeg
 
-# Professional phrase-matched mix (Pro style)
-python creative_remix.py --mode dj_set --songs_dir "songs/" --mix_style pro
+# Windows (with Chocolatey)
+choco install ffmpeg
 ```
 
-The output will be saved in the `remix_outputs/` directory.
+### 3. Setup Web UI (Optional)
 
-## 🧠 How It Works
+```bash
+cd ui
+npm install
+cd ..
+```
 
-AI-Mixer combines several advanced audio technologies:
+## Usage
 
-1.  **Audio Analysis (`librosa`):** Extracts BPM, Key, and Energy. It uses spectral novelty detection to identify musical structure (intros, verses, drops).
-2.  **Source Separation (`demucs`):** Splits audio files into four stems (vocals, drums, bass, other) to allow for independent manipulation.
-3.  **Time & Pitch Manipulation (`rubberband`):** High-quality time-stretching and pitch-shifting to match tempos and keys without artifacts.
-4.  **Mixing Engine:** Intelligently aligns beats and applies EQ-based crossfades to prevent frequency clashes during transitions.
+### Option 1: Web UI (Recommended for Beginners)
 
-## 🗺️ Roadmap
+```bash
+# Terminal 1 - Start backend
+python web_server.py
 
-*   **Dynamic Crowd Engagement:** Implement "acapella out" moments for singalongs.
-*   **Advanced FX:** Add filter sweeps, stutters, and build-up effects during transitions.
-*   **Real-time Mode:** Explore possibilities for real-time mixing input.
+# Terminal 2 - Start frontend
+cd ui && npm run dev
+```
 
-## 🤝 Contributing
+Open http://localhost:3000 and:
+1. **Drop your songs** into the upload zone
+2. **Choose a mode** (Quick Mashup / DJ Set / Kannada)
+3. **Pick a style** (Energetic / Smooth / Showcase)
+4. **Click "Analyze & Create"** - done!
 
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+### Option 2: Command Line
 
-## 📄 License
+#### Quick Mashup (2 songs)
+```bash
+python creative_remix.py --mode single_mashup \
+  --songA_path "song1.mp3" \
+  --songB_path "song2.mp3" \
+  --out "mashup.mp3"
+```
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+#### DJ Set (multiple songs)
+```bash
+python creative_remix.py --mode dj_set \
+  --songs_dir "songs/" \
+  --mix_style energetic
+```
 
-## ✍️ Author
+#### Kannada Deep Analysis
+```bash
+# Analyze a single track
+python kannada_mashup_analyzer.py "song.mp3" --output analysis.json
+
+# Plan a multi-track mashup
+python kannada_mashup_analyzer.py \
+  --mashup-dir "kannada_songs/" \
+  --style energetic \
+  --duration 15 \
+  --report
+```
+
+## Web API Endpoints
+
+The backend exposes a REST API at `http://localhost:8000`:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/songs` | GET | List all songs with analysis status |
+| `/api/songs/upload` | POST | Upload a new audio file |
+| `/api/analyze/kannada` | POST | Deep Kannada analysis (async) |
+| `/api/mashup/single` | POST | Create 2-song mashup (async) |
+| `/api/mashup/djset` | POST | Create DJ set (async) |
+| `/api/mashup/sandalwood` | POST | Create Kannada mashup with planning (async) |
+| `/api/tasks/{id}` | GET | Check task status |
+| `/api/tasks/{id}/stream` | GET | SSE stream for live progress |
+| `/api/outputs` | GET | List generated mashups |
+| `/api/stream/{filename}` | GET | Stream audio with seeking support |
+
+## Project Structure
+
+```
+AI-Mixer/
+├── creative_remix.py        # Main CLI entry point
+├── audio_analyzer.py        # Core audio analysis (BPM, key, energy)
+├── remix_engine.py          # Mixing engine with Demucs separation
+├── kannada_mashup_analyzer.py  # Indian music analyzer (Tala, Ragam, etc.)
+├── web_server.py            # FastAPI backend (13 endpoints)
+├── ui/                      # React + Vite frontend
+│   ├── src/
+│   │   ├── pages/
+│   │   │   ├── Home.jsx     # Main mashup creation page
+│   │   │   ├── Library.jsx  # Song management
+│   │   │   └── Results.jsx  # Output player
+│   │   └── components/
+│   │       ├── AudioPlayer.jsx      # WaveSurfer-based player
+│   │       ├── CompatibilityGraph.jsx  # Visual song connections
+│   │       └── Navbar.jsx
+├── songs/                   # Input audio files
+└── remix_outputs/           # Generated mashups
+```
+
+## How It Works
+
+### Audio Analysis Pipeline
+
+1. **Load Audio** - librosa loads and resamples to 22050 Hz
+2. **Beat Detection** - Onset strength analysis + beat tracking
+3. **Vocal Analysis** - HPSS separation to detect vocal regions
+4. **Beat Grid** - Precise tempo with downbeat detection
+5. **Tala Detection** - 4-method cross-validated Indian rhythm detection
+6. **Scale Analysis** - Chroma feature matching against Kannada scales
+7. **Hook Detection** - Energy dip/surge patterns for drops and hooks
+8. **Section Classification** - Intro/Outro/Pallavi/Charanam/Interlude
+9. **Phrase Boundaries** - 4/8/16/32 bar structure detection
+10. **DJ Cue Points** - Auto-generated MIX IN, MIX OUT, LOOP points
+11. **Compatibility Scoring** - Multi-factor matching (BPM, key, energy, Tala)
+
+### Tala Detection (V2)
+
+Uses 4-method weighted scoring:
+- **Onset Accent Analysis** (weight: 1.0) - Rhythmic pattern from onset strength
+- **Percussion Isolation** (weight: 1.5) - HPSS-separated drum patterns
+- **Beat Grid Cross-Validation** (weight: 2.0) - Validates against detected beats
+- **Interval Pattern Analysis** (weight: 1.0) - Inter-beat timing patterns
+
+Detects: Adi Tala (8 beats), Rupaka (6), Mishra Chapu (7), Khanda Chapu (5), Tisra (3), Eka (4), Sankeerna (9)
+
+### Transition Logic
+
+| Compatibility | Transition Type | Duration |
+|---------------|-----------------|----------|
+| > 70% | EQ Swap | 8 bars |
+| > 50% | Filter Sweep | 4 bars |
+| < 50% | Drop Swap | Instant |
+
+## Tech Stack
+
+**Backend:**
+- Python 3.8+
+- FastAPI (REST API)
+- librosa (audio analysis)
+- Demucs (source separation)
+- rubberband (time-stretch/pitch-shift)
+
+**Frontend:**
+- React 19 + Vite
+- WaveSurfer.js (waveform visualization)
+- Framer Motion (animations)
+- Lucide React (icons)
+
+## Roadmap
+
+- [ ] Real-time preview before creating mashup
+- [ ] Custom transition point selection
+- [ ] Export to DJ software (Rekordbox, Serato)
+- [ ] Batch processing mode
+- [ ] Mobile-responsive UI improvements
+
+## Contributing
+
+Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Author
 
 **Vishwas**
 
 ---
-*Built with passion for music and code.*
+*Built with passion for Kannada music and code.*
