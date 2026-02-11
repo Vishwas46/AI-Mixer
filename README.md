@@ -1,10 +1,54 @@
 # AI-Mixer
 
-![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)
+![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)
 
 **AI-Mixer** is a powerful, local-first tool for intelligently remixing and mashing up songs using AI. It features advanced audio analysis including **Indian music Tala detection**, a beautiful **Web UI**, and professional DJ mixing capabilities.
+
+## What's New in V2.2 - Professional Sandalwood Mixer
+
+The Sandalwood/Kannada mashup mode now uses a **professional-grade audio engine**:
+
+### Audio Processing Features
+
+| Feature | Description | Benefit |
+|---------|-------------|---------|
+| **BPM Synchronization** | Time-stretch all tracks to common tempo using pyrubberband | No beat clashes between songs |
+| **LUFS Normalization** | Normalize to -14 LUFS (YouTube standard) | Consistent volume, broadcast-ready |
+| **Beat-Grid Alignment** | Transitions snap to actual beat positions | Professional, on-beat mixing |
+| **Key Compatibility** | Detect and optionally pitch-shift incompatible keys | Harmonic mixing |
+| **Tala-Aware Transitions** | Align transitions to Tala cycle boundaries | Respects Indian rhythmic structure |
+
+### Professional Transition Types
+
+| Type | Description | Best For |
+|------|-------------|----------|
+| `crossfade` | Equal-power crossfade | General purpose |
+| `bass_swap` | High-pass outgoing, full incoming | Building energy |
+| `filter_sweep` | Progressive low-pass on outgoing | Avoiding vocal clash |
+| `echo_out` | Delay/reverb tail on outgoing | Dramatic energy drops |
+
+### New: Pallavi Medley Endpoint
+
+Create signature Sandalwood film medleys with `/api/mashup/pallavi-medley`:
+- Extracts **Pallavi (chorus)** sections from each track
+- Blends the catchiest parts together with quick 2-second transitions
+- This is the authentic Kannada DJ medley style!
+
+```bash
+# Create a Pallavi medley
+curl -X POST http://localhost:8000/api/mashup/pallavi-medley \
+  -H "Content-Type: application/json" \
+  -d '{"filenames": ["song1.mp3", "song2.mp3", "song3.mp3"]}'
+```
+
+### Export Quality
+
+| Setting | Bitrate | Use Case |
+|---------|---------|----------|
+| `high` | 320 kbps | YouTube upload, archival |
+| `standard` | 256 kbps | Streaming, sharing |
 
 ## What's New in V2.1
 
@@ -262,13 +306,22 @@ Uses 4-method weighted scoring for robust detection:
 | > 50% | Filter Sweep | 4 bars | Gradual filter transition |
 | < 50% | Drop Swap | Instant | Hard cut on beat |
 
-### Compatibility Scoring
+### Compatibility Scoring (Enhanced in V2.2)
 
-Songs are scored on multiple factors:
-- **BPM** (0-30 pts) - Tempo matching, half-time detection
-- **Key** (0-30 pts) - Harmonic compatibility (Camelot wheel)
-- **Energy** (0-20 pts) - Intensity matching
-- **Tala** (0-20 pts) - Rhythm pattern matching
+Songs are scored on multiple factors (max 670 points):
+
+| Factor | Points | Description |
+|--------|--------|-------------|
+| **BPM** | 0-100 | Tempo matching with half-time/double-time detection |
+| **Key/Ragam** | 0-150 | Harmonic compatibility (Camelot wheel + Indian scales) |
+| **Energy** | 0-80 | Intensity and dynamics matching |
+| **Structure** | 0-80 | Phrase and section alignment |
+| **Tala** | 0-60 | Indian rhythm pattern matching |
+| **Spectral** | 0-50 | Frequency profile similarity |
+| **Harmonic Rhythm** | 0-40 | Chord change rate matching |
+| **Vocal** | -50 to +40 | Region-based overlap analysis (not flat penalty) |
+| **Emotional** | 0-40 | Arc type matching (building, climax, etc.) |
+| **Pallavi** | 0-30 | Chorus section mashup potential |
 
 ## Tech Stack
 
@@ -305,18 +358,23 @@ Songs are scored on multiple factors:
 - [x] Waveform zoom and scroll
 - [x] A/B transition preview
 - [x] Cue point markers on waveform
+- [x] **Professional Sandalwood mixer** (BPM sync, LUFS normalization)
+- [x] **Pallavi medley endpoint** (chorus-to-chorus mashups)
+- [x] **Beat-grid aligned transitions**
+- [x] **Multiple transition types** (crossfade, bass_swap, filter_sweep, echo_out)
+- [x] **Enhanced compatibility scoring** (670-point system with Pallavi potential)
 
 ## Known Issues & Roadmap
 
-### Critical Issues to Fix
+### Fixed in V2.2
 
-| Issue | Severity | Description |
-|-------|----------|-------------|
-| CORS Open | Critical | `allow_origins=["*"]` should be restricted in production |
-| Path Validation | Critical | Add validation to prevent directory traversal attacks |
-| Input Validation | High | Add Pydantic validators for all request models |
-| Temp File Cleanup | High | Ensure temp files are cleaned up on errors |
-| Request Size Limits | Medium | Add max upload size validation |
+| Issue | Status | Fix |
+|-------|--------|-----|
+| CORS Open | **Fixed** | Restricted to localhost (configurable via `ALLOWED_ORIGINS`) |
+| Path Validation | **Fixed** | `validate_safe_path()` prevents directory traversal |
+| Input Validation | **Fixed** | Pydantic `Field` validators with patterns and limits |
+| Request Size Limits | **Fixed** | 100MB max upload size enforced |
+| Logging | **Fixed** | Proper logging framework replaces print statements |
 
 ### Roadmap (Next Steps)
 
@@ -324,9 +382,10 @@ Songs are scored on multiple factors:
 - [ ] Custom transition point selection (manual cue points)
 - [ ] Authentication and rate limiting for production
 - [ ] Pagination for file listings
-- [ ] Proper logging framework (replace print statements)
 - [ ] Binary Serato crate format support
 - [ ] Audio file corruption detection
+- [ ] Singer-aware vocal EQ profiles
+- [ ] Film era detection (group songs by decade/style)
 
 ## API Examples
 
