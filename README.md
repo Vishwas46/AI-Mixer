@@ -12,6 +12,7 @@
 - **Kannada/Sandalwood Mode** - Optimized for Indian film music with Tala & Ragam detection
 - **Visual Compatibility Graph** - See how your songs connect at a glance
 - **One-Click Mashups** - Drop songs, pick a style, get your mix
+- **17-Step Deep Analysis** - Professional DJ-grade analysis for each track
 
 ## Features
 
@@ -23,27 +24,43 @@
 | **DJ Set** | All songs mixed into one continuous track | Party mixes, podcasts |
 | **Kannada/Sandalwood** | Indian film music optimized with Tala detection | Bollywood/Sandalwood mashups |
 
-### Advanced Analysis
+### Advanced Analysis (17 Steps)
 
-- **Beat Grid Detection** - Precise BPM with downbeat alignment
-- **Tala Detection** - Identifies Indian rhythmic cycles (Adi Tala, Rupaka, Mishra Chapu, etc.)
-- **Scale/Ragam Analysis** - Detects Kannada musical scales (Mohanam, Kalyani, etc.)
-- **Vocal-Free Zone Detection** - Finds safe mix points without vocal clashes
-- **DJ Cue Points** - Auto-generates MIX IN, MIX OUT, DROP, LOOP points
-- **Phrase Boundaries** - Identifies 4/8/16/32 bar musical phrases
-- **Emotional Intensity Curve** - Maps energy flow throughout the song
+| Step | Feature | Description |
+|------|---------|-------------|
+| 1 | Audio Loading | librosa loads at 22050 Hz |
+| 2 | Base Analysis | BPM, Key, Energy, Structure |
+| 3 | Vocal Analysis | Demucs-based vocal region detection |
+| 4 | Beat Grid | Precise tempo + downbeat detection |
+| 5 | Tala Detection | 4-method cross-validated Indian rhythm |
+| 6 | Scale/Ragam | Kannada musical scale matching |
+| 7 | Hook Detection | Catchy/memorable section identification |
+| 8 | Harmonic Rhythm | Chord change rate analysis |
+| 9 | Spectral Analysis | Brightness, bass, 6-band EQ profile |
+| 10 | Percussion | Rhythm density, accent patterns |
+| 11 | Section Classification | Pallavi, Charanam, Interlude, Intro/Outro |
+| 12 | Emotional Curve | Intensity arc mapping |
+| 13 | Phrase Boundaries | 4/8/16/32 bar structure |
+| 14 | Vocal-Free Zones | Safe mix points detection |
+| 15 | Anand Audio Patterns | Dialogue intro, filmi style, duet detection |
+| 16 | DJ Cue Points | MIX IN, MIX OUT, DROP, LOOP, HOT CUES |
+| 17 | Transition Recommendations | EQ swap, filter sweep, drop swap |
 
 ### Mixing Styles
 
 **DJ Set Styles:**
-- `relaxed` - Full-length tracks with smooth 8-bar transitions
-- `energetic` - Highlight reels with punchy drops
-- `pro` - Professional phrase-matched mixing
+| Style | Description |
+|-------|-------------|
+| `relaxed` | Full-length tracks with smooth 8-bar transitions |
+| `energetic` | Highlight reels with punchy drops |
+| `pro` | Professional phrase-matched mixing |
 
 **Kannada/Sandalwood Styles:**
-- `energetic` - High-energy dance mashup, builds progressively
-- `smooth` - Melodic flowing transitions, consistent energy
-- `showcase` - Features the best hooks from each song
+| Style | Track Selection | Clip Length | Focus |
+|-------|-----------------|-------------|-------|
+| `energetic` | Builds energy progressively, +10 bonus for energy increases | 60% (max 60s) | Centers clips on detected hooks |
+| `smooth` | Consistent energy, starts with average-energy track | 80% of track | Standard mix_in to mix_out points |
+| `showcase` | Best hooks first (ranked by hook_score) | Variable | Features each song's best parts |
 
 ## Installation
 
@@ -98,7 +115,9 @@ Open http://localhost:3000 and:
 1. **Drop your songs** into the upload zone
 2. **Choose a mode** (Quick Mashup / DJ Set / Kannada)
 3. **Pick a style** (Energetic / Smooth / Showcase)
-4. **Click "Analyze & Create"** - done!
+4. **Set duration** (for Kannada mode: 5-30 minutes)
+5. **Click "Analyze & Create"** - done!
+6. **Download** audio mashup + detailed report
 
 ### Option 2: Command Line
 
@@ -138,11 +157,11 @@ The backend exposes a REST API at `http://localhost:8000`:
 |----------|--------|-------------|
 | `/api/songs` | GET | List all songs with analysis status |
 | `/api/songs/upload` | POST | Upload a new audio file |
-| `/api/analyze/kannada` | POST | Deep Kannada analysis (async) |
+| `/api/analyze/kannada` | POST | Deep 17-step Kannada analysis (async) |
 | `/api/mashup/single` | POST | Create 2-song mashup (async) |
 | `/api/mashup/djset` | POST | Create DJ set (async) |
-| `/api/mashup/sandalwood` | POST | Create Kannada mashup with planning (async) |
-| `/api/tasks/{id}` | GET | Check task status |
+| `/api/mashup/sandalwood` | POST | Create Kannada mashup + report (async) |
+| `/api/tasks/{id}` | GET | Check task status and progress |
 | `/api/tasks/{id}/stream` | GET | SSE stream for live progress |
 | `/api/outputs` | GET | List generated mashups |
 | `/api/stream/{filename}` | GET | Stream audio with seeking support |
@@ -151,81 +170,99 @@ The backend exposes a REST API at `http://localhost:8000`:
 
 ```
 AI-Mixer/
-├── creative_remix.py        # Main CLI entry point
-├── audio_analyzer.py        # Core audio analysis (BPM, key, energy)
-├── remix_engine.py          # Mixing engine with Demucs separation
-├── kannada_mashup_analyzer.py  # Indian music analyzer (Tala, Ragam, etc.)
-├── web_server.py            # FastAPI backend (13 endpoints)
-├── ui/                      # React + Vite frontend
+├── creative_remix.py          # Main CLI entry point
+├── audio_analyzer.py          # Core audio analysis (BPM, key, energy)
+├── remix_engine.py            # Mixing engine with Demucs separation
+├── kannada_mashup_analyzer.py # Indian music analyzer (2400+ lines)
+│                              # - Tala detection (7 talas)
+│                              # - Scale/Ragam analysis (10 scales)
+│                              # - DJ cue point generation
+│                              # - Mashup planning & compatibility
+├── web_server.py              # FastAPI backend (13 endpoints)
+├── ui/                        # React + Vite frontend
 │   ├── src/
 │   │   ├── pages/
-│   │   │   ├── Home.jsx     # Main mashup creation page
-│   │   │   ├── Library.jsx  # Song management
-│   │   │   └── Results.jsx  # Output player
+│   │   │   ├── Home.jsx       # Main mashup creation (drag-drop, modes)
+│   │   │   ├── Library.jsx    # Song management
+│   │   │   └── Results.jsx    # Output player
 │   │   └── components/
-│   │       ├── AudioPlayer.jsx      # WaveSurfer-based player
+│   │       ├── AudioPlayer.jsx         # WaveSurfer-based player
 │   │       ├── CompatibilityGraph.jsx  # Visual song connections
+│   │       ├── TaskProgress.jsx        # Live progress with SSE
 │   │       └── Navbar.jsx
-├── songs/                   # Input audio files
-└── remix_outputs/           # Generated mashups
+├── songs/                     # Input audio files (place your MP3s here)
+└── remix_outputs/             # Generated mashups + reports
 ```
 
 ## How It Works
 
-### Audio Analysis Pipeline
-
-1. **Load Audio** - librosa loads and resamples to 22050 Hz
-2. **Beat Detection** - Onset strength analysis + beat tracking
-3. **Vocal Analysis** - HPSS separation to detect vocal regions
-4. **Beat Grid** - Precise tempo with downbeat detection
-5. **Tala Detection** - 4-method cross-validated Indian rhythm detection
-6. **Scale Analysis** - Chroma feature matching against Kannada scales
-7. **Hook Detection** - Energy dip/surge patterns for drops and hooks
-8. **Section Classification** - Intro/Outro/Pallavi/Charanam/Interlude
-9. **Phrase Boundaries** - 4/8/16/32 bar structure detection
-10. **DJ Cue Points** - Auto-generated MIX IN, MIX OUT, LOOP points
-11. **Compatibility Scoring** - Multi-factor matching (BPM, key, energy, Tala)
-
 ### Tala Detection (V2)
 
-Uses 4-method weighted scoring:
-- **Onset Accent Analysis** (weight: 1.0) - Rhythmic pattern from onset strength
-- **Percussion Isolation** (weight: 1.5) - HPSS-separated drum patterns
-- **Beat Grid Cross-Validation** (weight: 2.0) - Validates against detected beats
-- **Interval Pattern Analysis** (weight: 1.0) - Inter-beat timing patterns
+Uses 4-method weighted scoring for robust detection:
 
-Detects: Adi Tala (8 beats), Rupaka (6), Mishra Chapu (7), Khanda Chapu (5), Tisra (3), Eka (4), Sankeerna (9)
+| Method | Weight | Description |
+|--------|--------|-------------|
+| Onset Accent Analysis | 1.0 | Rhythmic pattern from onset strength |
+| Percussion Isolation | 1.5 | HPSS-separated drum patterns |
+| Beat Grid Cross-Validation | 2.0 | Validates against detected beats |
+| Interval Pattern Analysis | 1.0 | Inter-beat timing patterns |
+
+**Supported Talas:** Adi Tala (8 beats), Rupaka (6), Mishra Chapu (7), Khanda Chapu (5), Tisra (3), Eka (4), Sankeerna (9)
 
 ### Transition Logic
 
-| Compatibility | Transition Type | Duration |
-|---------------|-----------------|----------|
-| > 70% | EQ Swap | 8 bars |
-| > 50% | Filter Sweep | 4 bars |
-| < 50% | Drop Swap | Instant |
+| Compatibility | Transition Type | Duration | Description |
+|---------------|-----------------|----------|-------------|
+| > 70% | EQ Swap | 8 bars | Smooth frequency blend |
+| > 50% | Filter Sweep | 4 bars | Gradual filter transition |
+| < 50% | Drop Swap | Instant | Hard cut on beat |
+
+### Compatibility Scoring
+
+Songs are scored on multiple factors:
+- **BPM** (0-30 pts) - Tempo matching, half-time detection
+- **Key** (0-30 pts) - Harmonic compatibility (Camelot wheel)
+- **Energy** (0-20 pts) - Intensity matching
+- **Tala** (0-20 pts) - Rhythm pattern matching
 
 ## Tech Stack
 
 **Backend:**
 - Python 3.8+
-- FastAPI (REST API)
+- FastAPI (REST API with async tasks)
 - librosa (audio analysis)
 - Demucs (source separation)
 - rubberband (time-stretch/pitch-shift)
+- pydub (audio manipulation)
 
 **Frontend:**
 - React 19 + Vite
 - WaveSurfer.js (waveform visualization)
 - Framer Motion (animations)
 - Lucide React (icons)
+- React Router DOM (navigation)
 
-## Roadmap
+## Implemented Features
 
-- [ ] Real-time preview before creating mashup
-- [ ] Custom transition point selection
-- [ ] Export to DJ software (Rekordbox, Serato)
-- [ ] Batch processing mode
-- [ ] Mobile-responsive UI improvements
+- [x] Web UI with drag-and-drop
+- [x] Three mixing modes (Quick/DJ Set/Kannada)
+- [x] Visual compatibility graph
+- [x] 17-step deep analysis
+- [x] Tala detection with beat grid cross-validation
+- [x] All Kannada styles (energetic/smooth/showcase)
+- [x] Duration control for Kannada mode
+- [x] Audio + report generation
+- [x] Live progress with SSE
+
+## Roadmap (Next Steps)
+
+- [ ] Real-time audio preview before creating mashup
+- [ ] Custom transition point selection (manual cue points)
+- [ ] Export to DJ software (Rekordbox XML, Serato crates)
+- [ ] Batch processing mode for large libraries
+- [ ] YouTube URL input (download + analyze)
+- [ ] Waveform zoom and selection in UI
+- [ ] A/B preview of transitions
 
 ## Contributing
 
