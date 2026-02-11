@@ -21,7 +21,7 @@ import sys
 import contextlib
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware

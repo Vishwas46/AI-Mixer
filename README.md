@@ -1,10 +1,39 @@
 # AI-Mixer
 
-![Version](https://img.shields.io/badge/version-2.3.0-blue.svg)
+![Version](https://img.shields.io/badge/version-2.4.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)
 
 **AI-Mixer** is a powerful, local-first tool for intelligently remixing and mashing up songs using AI. It features advanced audio analysis including **Indian music Tala detection**, a beautiful **Web UI**, and professional DJ mixing capabilities.
+
+---
+
+## What's New in V2.4 - Sandalwood Studio UI
+
+A dedicated **professional UI** for creating Kannada/Sandalwood mashups with a 4-step wizard:
+
+### Sandalwood Studio Features
+
+| Feature | Description |
+|---------|-------------|
+| **4-Step Wizard** | Guided workflow: Select → Analyze → Configure → Create |
+| **Singer Detection Cards** | Visual cards showing detected artist with confidence bars |
+| **Era Timeline** | Interactive decade visualization (1960s-2020s) |
+| **Track Cards** | Drag-to-select with analysis badges (BPM, key, mood) |
+| **Cue Point Editor** | Clickable waveform with custom cue markers |
+| **Style Selector** | 4 mashup styles with animated transitions |
+| **Progress Overlay** | Real-time creation progress with stage indicators |
+| **Glass Morphism Design** | Modern UI with smooth Framer Motion animations |
+
+Access the Sandalwood Studio at: **http://localhost:3000/sandalwood**
+
+### Design System
+
+- Glass morphism with backdrop blur
+- Gold accent gradient for Sandalwood branding
+- Framer Motion animations throughout
+- Responsive layout with flex/grid
+- Step indicator with progress tracking
 
 ---
 
@@ -419,6 +448,8 @@ AI-Mixer/
 │       │   ├── Home.jsx           # Main mashup creation (drag-drop, modes)
 │       │   ├── Library.jsx        # Song management & analysis
 │       │   ├── Studio.jsx         # Advanced mixing modes
+│       │   ├── SandalwoodStudio.jsx # Kannada mashup wizard (V2.4)
+│       │   ├── SandalwoodStudio.css # Sandalwood Studio styling
 │       │   └── Results.jsx        # Output player
 │       └── components/
 │           ├── AudioPlayer.jsx    # WaveSurfer with zoom + cue markers
@@ -521,6 +552,16 @@ Uses 4-method weighted scoring for robust detection:
 - [x] Beat-grid aligned transitions
 - [x] Multiple transition types (crossfade, bass_swap, filter_sweep, echo_out)
 - [x] Enhanced compatibility scoring (670-point system)
+
+### V2.4 Features
+- [x] Sandalwood Studio UI with 4-step wizard
+- [x] Singer detection cards with confidence visualization
+- [x] Era timeline with decade visualization
+- [x] Cue point editor with waveform markers
+- [x] Style selector with animated transitions
+- [x] Progress overlay with stage indicators
+- [x] Glass morphism design system
+- [x] Framer Motion animations throughout
 
 ### V2.3 Features
 - [x] Singer detection with 7 Kannada playback artist profiles
