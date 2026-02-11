@@ -74,6 +74,22 @@ from sandalwood_mixer import (
     create_sandalwood_mashup,
     create_pallavi_medley,
 )
+from sandalwood_enhancements import (
+    validate_audio_file,
+    batch_validate_audio,
+    detect_singer,
+    extract_vocal_features,
+    get_singer_eq_profile,
+    analyze_era_from_audio,
+    generate_transition_preview,
+    generate_track_preview,
+    set_custom_cue_point,
+    get_custom_cue_points,
+    delete_custom_cue_point,
+    merge_cue_points,
+    KANNADA_SINGER_PROFILES,
+    FILM_ERA_PROFILES,
+)
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -508,18 +524,36 @@ async def stream_task_progress(task_id: str):
 
 
 # ------------------------------------------------------------------
-# List songs
+# List songs (with pagination)
 # ------------------------------------------------------------------
 @app.get("/api/songs")
-async def list_songs():
+async def list_songs(
+    page: int = 1,
+    limit: int = 50,
+    sort_by: str = "name",
+    order: str = "asc"
+):
+    """
+    List songs with pagination support.
+
+    Args:
+        page: Page number (1-indexed)
+        limit: Items per page (max 100)
+        sort_by: Sort field (name, size, modified)
+        order: Sort order (asc, desc)
+    """
     if not os.path.isdir(SONGS_DIR):
-        return {"songs": []}
+        return {"songs": [], "count": 0, "total": 0, "page": page, "pages": 0}
+
+    # Validate parameters
+    page = max(1, page)
+    limit = max(1, min(100, limit))
 
     cache = _load_analysis_cache()
-    songs = []
+    all_songs = []
 
-    for entry in sorted(os.listdir(SONGS_DIR)):
-        if not entry.lower().endswith(".mp3"):
+    for entry in os.listdir(SONGS_DIR):
+        if not entry.lower().endswith((".mp3", ".wav", ".flac", ".m4a")):
             continue
         full_path = os.path.join(SONGS_DIR, entry)
         stat = os.stat(full_path)
@@ -527,15 +561,44 @@ async def list_songs():
         # Check if analysis cache exists for this file
         has_cache = full_path in cache or entry in cache
 
-        songs.append({
+        all_songs.append({
             "name": entry,
             "size_bytes": stat.st_size,
             "size_mb": round(stat.st_size / (1024 * 1024), 2),
             "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            "modified_ts": stat.st_mtime,
             "has_analysis": has_cache,
         })
 
-    return {"songs": songs, "count": len(songs), "directory": SONGS_DIR}
+    # Sort
+    sort_key = {
+        "name": lambda x: x["name"].lower(),
+        "size": lambda x: x["size_bytes"],
+        "modified": lambda x: x["modified_ts"],
+    }.get(sort_by, lambda x: x["name"].lower())
+
+    all_songs.sort(key=sort_key, reverse=(order == "desc"))
+
+    # Remove internal sort key
+    for song in all_songs:
+        song.pop("modified_ts", None)
+
+    # Paginate
+    total = len(all_songs)
+    total_pages = (total + limit - 1) // limit
+    start = (page - 1) * limit
+    end = start + limit
+    songs = all_songs[start:end]
+
+    return {
+        "songs": songs,
+        "count": len(songs),
+        "total": total,
+        "page": page,
+        "pages": total_pages,
+        "limit": limit,
+        "directory": SONGS_DIR,
+    }
 
 
 # ------------------------------------------------------------------
@@ -1427,6 +1490,413 @@ async def get_all_analysis():
     return {
         "count": len(song_analyses),
         "analyses": song_analyses,
+    }
+
+
+# ---------------------------------------------------------------------------
+# SANDALWOOD ENHANCEMENTS API
+# ---------------------------------------------------------------------------
+
+# ------------------------------------------------------------------
+# Audio Validation
+# ------------------------------------------------------------------
+@app.post("/api/validate")
+async def validate_audio(filenames: List[str]):
+    """
+    Validate audio files for corruption and quality issues.
+    """
+    file_paths = []
+    for filename in filenames:
+        path = validate_safe_path(SONGS_DIR, filename)
+        if os.path.exists(path):
+            file_paths.append(path)
+
+    if not file_paths:
+        raise HTTPException(status_code=400, detail="No valid files found")
+
+    results = batch_validate_audio(file_paths)
+    return results
+
+
+@app.get("/api/validate/{filename}")
+async def validate_single_audio(filename: str):
+    """
+    Validate a single audio file.
+    """
+    file_path = validate_safe_path(SONGS_DIR, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    result = validate_audio_file(file_path)
+    return result
+
+
+# ------------------------------------------------------------------
+# Singer Detection
+# ------------------------------------------------------------------
+class SingerDetectionRequest(BaseModel):
+    filename: str
+
+
+@app.post("/api/singer/detect")
+async def detect_singer_endpoint(req: SingerDetectionRequest):
+    """
+    Detect the likely singer in a track and get EQ recommendations.
+    Requires the track to have been analyzed first.
+    """
+    file_path = validate_safe_path(SONGS_DIR, req.filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    task = _create_task("singer_detection", 1)
+
+    def _do_detection():
+        try:
+            task["status"] = "running"
+            print(f"Detecting singer in {req.filename}...")
+
+            # Load audio
+            y, sr = librosa.load(file_path, sr=22050, mono=True)
+
+            # Extract vocal features (ideally from separated vocals, but use full mix as fallback)
+            task["progress"] = 30
+            vocal_features = extract_vocal_features(y, sr)
+
+            task["progress"] = 60
+            singer_id, confidence, profile = detect_singer(vocal_features)
+
+            task["progress"] = 90
+            eq_profile = get_singer_eq_profile(singer_id)
+
+            return {
+                "filename": req.filename,
+                "detected_singer": profile["name"],
+                "singer_id": singer_id,
+                "confidence": round(confidence, 2),
+                "era": profile["era"],
+                "characteristics": profile["characteristics"],
+                "eq_profile": eq_profile,
+                "vocal_features": {
+                    "spectral_centroid": vocal_features.get("spectral_centroid_mean"),
+                    "pitch_mean": vocal_features.get("pitch_mean"),
+                    "pitch_std": vocal_features.get("pitch_std"),
+                },
+            }
+        except Exception as e:
+            logger.exception("Singer detection failed")
+            raise
+
+    _run_in_background(task, _do_detection)
+    return {"task_id": task["task_id"], "status": "pending"}
+
+
+@app.get("/api/singer/profiles")
+async def list_singer_profiles():
+    """
+    List all available Kannada singer profiles and their EQ settings.
+    """
+    profiles = []
+    for singer_id, profile in KANNADA_SINGER_PROFILES.items():
+        if singer_id != "unknown":
+            profiles.append({
+                "id": singer_id,
+                "name": profile["name"],
+                "era": profile["era"],
+                "characteristics": profile["characteristics"],
+                "eq_profile": profile["eq_profile"],
+            })
+
+    return {"singers": profiles, "count": len(profiles)}
+
+
+# ------------------------------------------------------------------
+# Film Era Detection
+# ------------------------------------------------------------------
+@app.post("/api/era/detect")
+async def detect_era_endpoint(req: SingerDetectionRequest):
+    """
+    Detect the film era/decade of a track based on audio characteristics.
+    """
+    file_path = validate_safe_path(SONGS_DIR, req.filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    task = _create_task("era_detection", 1)
+
+    def _do_detection():
+        try:
+            task["status"] = "running"
+            print(f"Detecting era for {req.filename}...")
+
+            # Load audio
+            y, sr = librosa.load(file_path, sr=22050, mono=True)
+            task["progress"] = 50
+
+            result = analyze_era_from_audio(y, sr)
+            task["progress"] = 100
+
+            return {
+                "filename": req.filename,
+                **result,
+            }
+        except Exception as e:
+            logger.exception("Era detection failed")
+            raise
+
+    _run_in_background(task, _do_detection)
+    return {"task_id": task["task_id"], "status": "pending"}
+
+
+@app.get("/api/era/profiles")
+async def list_era_profiles():
+    """
+    List all film era profiles with their characteristics.
+    """
+    profiles = []
+    for era_id, profile in FILM_ERA_PROFILES.items():
+        profiles.append({
+            "id": era_id,
+            "name": profile["name"],
+            "years": profile["years"],
+            "style": profile["style"],
+            "composers": profile["composers"],
+            "characteristics": profile["characteristics"],
+        })
+
+    return {"eras": profiles, "count": len(profiles)}
+
+
+# ------------------------------------------------------------------
+# Preview Generation
+# ------------------------------------------------------------------
+class TransitionPreviewRequest(BaseModel):
+    track1: str
+    track2: str
+    transition_point1: float = Field(..., ge=0, description="Transition point in track 1 (seconds)")
+    transition_point2: float = Field(0, ge=0, description="Start point in track 2 (seconds)")
+    duration: float = Field(8.0, ge=2, le=30, description="Transition duration (seconds)")
+
+
+@app.post("/api/preview/transition")
+async def create_transition_preview(req: TransitionPreviewRequest):
+    """
+    Generate a preview of the transition between two tracks.
+    Returns a downloadable preview audio file.
+    """
+    track1_path = validate_safe_path(SONGS_DIR, req.track1)
+    track2_path = validate_safe_path(SONGS_DIR, req.track2)
+
+    if not os.path.exists(track1_path):
+        raise HTTPException(status_code=404, detail=f"Track 1 not found: {req.track1}")
+    if not os.path.exists(track2_path):
+        raise HTTPException(status_code=404, detail=f"Track 2 not found: {req.track2}")
+
+    task = _create_task("transition_preview", 1)
+
+    def _do_preview():
+        try:
+            task["status"] = "running"
+            print(f"Generating transition preview: {req.track1} -> {req.track2}")
+
+            task["progress"] = 20
+
+            # Generate preview
+            output_filename = f"preview_transition_{datetime.now().strftime('%Y%m%d_%H%M%S')}.wav"
+            output_path = os.path.join(OUTPUT_DIR, output_filename)
+
+            generate_transition_preview(
+                track1_path,
+                track2_path,
+                req.transition_point1,
+                req.transition_point2,
+                req.duration,
+                output_path,
+            )
+
+            task["progress"] = 100
+
+            return {
+                "preview_file": output_filename,
+                "track1": req.track1,
+                "track2": req.track2,
+                "transition_point1": req.transition_point1,
+                "transition_point2": req.transition_point2,
+                "duration": req.duration,
+            }
+        except Exception as e:
+            logger.exception("Preview generation failed")
+            raise
+
+    _run_in_background(task, _do_preview)
+    return {"task_id": task["task_id"], "status": "pending"}
+
+
+class TrackPreviewRequest(BaseModel):
+    filename: str
+    start_time: float = Field(0, ge=0, description="Start time in seconds")
+    duration: float = Field(30, ge=5, le=60, description="Preview duration in seconds")
+
+
+@app.post("/api/preview/track")
+async def create_track_preview(req: TrackPreviewRequest):
+    """
+    Generate a preview clip of a single track.
+    """
+    file_path = validate_safe_path(SONGS_DIR, req.filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    output_filename = f"preview_{req.filename.replace('.mp3', '')}_{int(req.start_time)}s.wav"
+    output_path = os.path.join(OUTPUT_DIR, output_filename)
+
+    generate_track_preview(file_path, req.start_time, req.duration, output_path)
+
+    return {
+        "preview_file": output_filename,
+        "original": req.filename,
+        "start_time": req.start_time,
+        "duration": req.duration,
+    }
+
+
+# ------------------------------------------------------------------
+# Custom Cue Points
+# ------------------------------------------------------------------
+class SetCuePointRequest(BaseModel):
+    filename: str
+    cue_type: str = Field(..., pattern="^(mix_in|mix_out|drop|loop_start|loop_end|hot_cue_[1-8])$")
+    time: float = Field(..., ge=0, description="Cue point time in seconds")
+    label: Optional[str] = None
+
+
+@app.post("/api/cue-points")
+async def set_cue_point(req: SetCuePointRequest):
+    """
+    Set a custom cue point for a track.
+    Custom cue points override automatic ones in mashup creation.
+    """
+    # Validate file exists
+    file_path = validate_safe_path(SONGS_DIR, req.filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    cue_points = set_custom_cue_point(
+        req.filename,
+        req.cue_type,
+        req.time,
+        req.label
+    )
+
+    return {
+        "filename": req.filename,
+        "cue_points": cue_points,
+        "message": f"Set {req.cue_type} at {req.time}s",
+    }
+
+
+@app.get("/api/cue-points/{filename}")
+async def get_cue_points(filename: str):
+    """
+    Get all custom cue points for a track.
+    """
+    custom_points = get_custom_cue_points(filename)
+
+    # Also get auto-detected cue points from cache
+    cache = _load_analysis_cache()
+    file_path = os.path.join(SONGS_DIR, filename)
+
+    auto_points = {}
+    cached = cache.get(file_path) or cache.get(filename)
+    if cached and "dj_cue_points" in cached:
+        auto_points = cached["dj_cue_points"]
+
+    # Merge with custom taking precedence
+    merged = merge_cue_points(auto_points, custom_points)
+
+    return {
+        "filename": filename,
+        "auto_detected": auto_points,
+        "custom": custom_points,
+        "merged": merged,
+    }
+
+
+@app.delete("/api/cue-points/{filename}/{cue_type}")
+async def remove_cue_point(filename: str, cue_type: str):
+    """
+    Delete a custom cue point.
+    """
+    success = delete_custom_cue_point(filename, cue_type)
+
+    if not success:
+        raise HTTPException(status_code=404, detail="Cue point not found")
+
+    return {
+        "filename": filename,
+        "deleted": cue_type,
+        "message": "Cue point deleted",
+    }
+
+
+# ------------------------------------------------------------------
+# Enhanced Mashup with Custom Cue Points
+# ------------------------------------------------------------------
+class EnhancedMashupRequest(BaseModel):
+    filenames: list[str] = Field(..., min_length=2, max_length=50)
+    style: str = Field("energetic", pattern="^(energetic|smooth|showcase)$")
+    duration: int = Field(10, ge=1, le=60)
+    use_custom_cue_points: bool = Field(True, description="Use custom cue points if available")
+    apply_singer_eq: bool = Field(False, description="Apply singer-aware EQ profiles")
+    detect_era: bool = Field(False, description="Group by detected era")
+
+
+# ------------------------------------------------------------------
+# Health check with feature list
+# ------------------------------------------------------------------
+@app.get("/api/features")
+async def list_features():
+    """
+    List all available features and their status.
+    """
+    return {
+        "version": "2.3.0",
+        "features": {
+            "core": {
+                "quick_mashup": True,
+                "dj_set": True,
+                "sandalwood_mashup": True,
+            },
+            "analysis": {
+                "17_step_analysis": True,
+                "tala_detection": True,
+                "pallavi_detection": True,
+                "vocal_region_detection": True,
+            },
+            "professional_mixer": {
+                "bpm_sync": True,
+                "lufs_normalization": True,
+                "beat_grid_alignment": True,
+                "multiple_transitions": ["crossfade", "bass_swap", "filter_sweep", "echo_out"],
+            },
+            "enhancements": {
+                "singer_detection": True,
+                "singer_eq_profiles": len(KANNADA_SINGER_PROFILES) - 1,  # Exclude unknown
+                "film_era_detection": True,
+                "era_profiles": len(FILM_ERA_PROFILES),
+                "audio_validation": True,
+                "custom_cue_points": True,
+                "transition_preview": True,
+                "pagination": True,
+            },
+            "export": {
+                "rekordbox_xml": True,
+                "serato_crates": True,
+                "json": True,
+            },
+            "integrations": {
+                "youtube_download": True,
+            },
+        },
     }
 
 

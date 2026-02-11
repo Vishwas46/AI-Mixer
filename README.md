@@ -1,10 +1,122 @@
 # AI-Mixer
 
-![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)
+![Version](https://img.shields.io/badge/version-2.3.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)
 
 **AI-Mixer** is a powerful, local-first tool for intelligently remixing and mashing up songs using AI. It features advanced audio analysis including **Indian music Tala detection**, a beautiful **Web UI**, and professional DJ mixing capabilities.
+
+---
+
+## What's New in V2.3 - Complete Sandalwood Toolkit
+
+### Singer Detection & EQ Profiles
+
+Automatically detect famous Kannada playback singers and apply optimal EQ settings:
+
+| Singer | Era | Style | EQ Focus |
+|--------|-----|-------|----------|
+| Dr. Rajkumar | 1960s-1990s | Classical, Powerful | Warmth boost, presence at 3.5kHz |
+| S.P. Balasubrahmanyam | 1970s-2020s | Versatile, Melodic | Mid clarity, high shimmer |
+| Rajesh Krishnan | 1990s-present | Energetic, Romantic | Bright, presence at 5kHz |
+| K.S. Chithra | 1980s-present | Classical, Devotional | Balanced, presence at 5.5kHz |
+| Shreya Ghoshal | 2000s-present | Ornamental, Bright | High clarity, air at 12kHz |
+| K.J. Yesudas | 1960s-present | Classical, Rich | Warm, low boost |
+| Sonu Nigam | 1990s-present | Powerful, Modern | Full range, presence at 4.5kHz |
+
+```bash
+# Detect singer in a track
+curl -X POST http://localhost:8000/api/singer/detect \
+  -H "Content-Type: application/json" \
+  -d '{"filename": "naanu_neenu.mp3"}'
+```
+
+### Film Era Detection
+
+Classify songs by decade and production style:
+
+| Era | Years | Style | Typical Composers |
+|-----|-------|-------|-------------------|
+| 1960s Classical | 1960-1969 | Classical Devotional | G.K. Venkatesh, T.G. Lingappa |
+| 1970s Melodic | 1970-1979 | Melodic Romantic | Rajan-Nagendra |
+| 1980s Disco | 1980-1989 | Disco Pop | Hamsalekha, Upendra Kumar |
+| 1990s Hamsalekha | 1990-1999 | Filmi Mass | Hamsalekha, V. Manohar |
+| 2000s Modern | 2000-2009 | Modern Fusion | V. Harikrishna, Gurukiran |
+| 2010s Contemporary | 2010-2019 | Contemporary EDM | Arjun Janya, V. Harikrishna |
+| 2020s Indie | 2020-present | Indie Experimental | B. Ajaneesh Loknath, Ravi Basrur |
+
+```bash
+# Detect era of a track
+curl -X POST http://localhost:8000/api/era/detect \
+  -H "Content-Type: application/json" \
+  -d '{"filename": "naanu_neenu.mp3"}'
+```
+
+### Audio File Validation
+
+Detect corrupted or problematic audio files before processing:
+
+| Check | Description |
+|-------|-------------|
+| File integrity | Verifies file can be loaded |
+| Silence detection | Warns if audio is silent or very quiet |
+| Clipping detection | Identifies distorted audio |
+| DC offset | Detects problematic DC bias |
+| Format validation | Verifies supported format |
+
+```bash
+# Validate audio files
+curl -X POST http://localhost:8000/api/validate \
+  -H "Content-Type: application/json" \
+  -d '["song1.mp3", "song2.mp3"]'
+```
+
+### Real-Time Preview Generation
+
+Preview transitions before creating the final mashup:
+
+```bash
+# Generate transition preview
+curl -X POST http://localhost:8000/api/preview/transition \
+  -H "Content-Type: application/json" \
+  -d '{
+    "track1": "song1.mp3",
+    "track2": "song2.mp3",
+    "transition_point1": 180.0,
+    "transition_point2": 0.0,
+    "duration": 8.0
+  }'
+```
+
+### Custom Cue Points
+
+Override automatic cue points with manual selections:
+
+```bash
+# Set a custom cue point
+curl -X POST http://localhost:8000/api/cue-points \
+  -H "Content-Type: application/json" \
+  -d '{
+    "filename": "song.mp3",
+    "cue_type": "mix_in",
+    "time": 32.5,
+    "label": "After Intro"
+  }'
+
+# Get cue points (auto + custom merged)
+curl http://localhost:8000/api/cue-points/song.mp3
+```
+
+### Pagination for File Listings
+
+Handle large libraries efficiently:
+
+```bash
+# Paginated song list
+curl "http://localhost:8000/api/songs?page=1&limit=20&sort_by=modified&order=desc"
+```
+
+---
 
 ## What's New in V2.2 - Professional Sandalwood Mixer
 
@@ -29,7 +141,7 @@ The Sandalwood/Kannada mashup mode now uses a **professional-grade audio engine*
 | `filter_sweep` | Progressive low-pass on outgoing | Avoiding vocal clash |
 | `echo_out` | Delay/reverb tail on outgoing | Dramatic energy drops |
 
-### New: Pallavi Medley Endpoint
+### Pallavi Medley Endpoint
 
 Create signature Sandalwood film medleys with `/api/mashup/pallavi-medley`:
 - Extracts **Pallavi (chorus)** sections from each track
@@ -37,7 +149,6 @@ Create signature Sandalwood film medleys with `/api/mashup/pallavi-medley`:
 - This is the authentic Kannada DJ medley style!
 
 ```bash
-# Create a Pallavi medley
 curl -X POST http://localhost:8000/api/mashup/pallavi-medley \
   -H "Content-Type: application/json" \
   -d '{"filenames": ["song1.mp3", "song2.mp3", "song3.mp3"]}'
@@ -50,6 +161,8 @@ curl -X POST http://localhost:8000/api/mashup/pallavi-medley \
 | `high` | 320 kbps | YouTube upload, archival |
 | `standard` | 256 kbps | Streaming, sharing |
 
+---
+
 ## What's New in V2.1
 
 - **YouTube Download** - Paste a YouTube link, auto-download and analyze
@@ -59,6 +172,8 @@ curl -X POST http://localhost:8000/api/mashup/pallavi-medley \
 - **A/B Transition Preview** - Preview transitions before creating mashup
 - **Cue Point Markers** - Visual markers for MIX IN, DROP, MIX OUT on waveform
 - **Volume Control** - Adjustable volume slider in audio player
+
+---
 
 ## Features
 
@@ -92,7 +207,7 @@ curl -X POST http://localhost:8000/api/mashup/pallavi-medley \
 | 16 | DJ Cue Points | MIX IN, MIX OUT, DROP, LOOP, HOT CUES |
 | 17 | Transition Recommendations | EQ swap, filter sweep, drop swap |
 
-### New in V2.1: DJ Software Export
+### DJ Software Export
 
 Export your analyzed songs to professional DJ software:
 
@@ -117,6 +232,8 @@ Export your analyzed songs to professional DJ software:
 | `energetic` | Builds energy progressively, +10 bonus for energy increases | 60% (max 60s) | Centers clips on detected hooks |
 | `smooth` | Consistent energy, starts with average-energy track | 80% of track | Standard mix_in to mix_out points |
 | `showcase` | Best hooks first (ranked by hook_score) | Variable | Features each song's best parts |
+
+---
 
 ## Installation
 
@@ -155,9 +272,11 @@ npm install
 cd ..
 ```
 
+---
+
 ## Usage
 
-### Option 1: Web UI (Recommended for Beginners)
+### Option 1: Web UI (Recommended)
 
 ```bash
 # Terminal 1 - Start backend
@@ -206,7 +325,9 @@ python kannada_mashup_analyzer.py \
   --report
 ```
 
-## Web API Endpoints
+---
+
+## Web API Reference
 
 The backend exposes a REST API at `http://localhost:8000`:
 
@@ -214,11 +335,12 @@ The backend exposes a REST API at `http://localhost:8000`:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/songs` | GET | List all songs with analysis status |
+| `/api/songs` | GET | List songs with pagination (`?page=1&limit=50`) |
 | `/api/songs/upload` | POST | Upload a new audio file |
 | `/api/songs/youtube` | POST | Download from YouTube URL |
 | `/api/analysis/{filename}` | GET | Get cached analysis for a file |
 | `/api/analysis/all` | GET | Get all cached analyses |
+| `/api/features` | GET | List all available features and version |
 
 ### Analysis Endpoints
 
@@ -227,6 +349,8 @@ The backend exposes a REST API at `http://localhost:8000`:
 | `/api/analyze` | POST | Basic analysis (async) |
 | `/api/analyze/kannada` | POST | Deep 17-step Kannada analysis (async) |
 | `/api/analyze/batch` | POST | Batch analyze multiple files (async) |
+| `/api/validate` | POST | Validate audio files for issues |
+| `/api/validate/{filename}` | GET | Validate single audio file |
 
 ### Mashup Endpoints
 
@@ -235,14 +359,33 @@ The backend exposes a REST API at `http://localhost:8000`:
 | `/api/mashup/single` | POST | Create 2-song mashup (async) |
 | `/api/mashup/djset` | POST | Create continuous DJ mix (async) |
 | `/api/mashup/sandalwood` | POST | Create Kannada mashup + report (async) |
+| `/api/mashup/pallavi-medley` | POST | Create Pallavi-to-Pallavi medley (async) |
 | `/api/mashup/batch` | POST | Create multiple mashups (async) |
+
+### Singer & Era Detection
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/singer/detect` | POST | Detect singer and get EQ profile |
+| `/api/singer/profiles` | GET | List all singer profiles |
+| `/api/era/detect` | POST | Detect film era/decade |
+| `/api/era/profiles` | GET | List all era profiles |
+
+### Preview & Cue Points
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/preview/transition` | POST | Generate transition preview audio |
+| `/api/preview/track` | POST | Generate track clip preview |
+| `/api/cue-points` | POST | Set custom cue point |
+| `/api/cue-points/{filename}` | GET | Get all cue points (auto + custom) |
+| `/api/cue-points/{filename}/{type}` | DELETE | Delete custom cue point |
 
 ### Export Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/export/dj` | POST | Export to DJ software (Rekordbox/Serato/JSON) |
-| `/api/youtube/info` | GET | Get YouTube video metadata |
 
 ### Task & Output Endpoints
 
@@ -253,13 +396,17 @@ The backend exposes a REST API at `http://localhost:8000`:
 | `/api/outputs` | GET | List generated mashups |
 | `/api/stream/{filename}` | GET | Stream audio with seeking support |
 
+---
+
 ## Project Structure
 
 ```
 AI-Mixer/
 ├── Backend (Python/FastAPI)
-│   ├── web_server.py              # FastAPI backend (20+ endpoints)
+│   ├── web_server.py              # FastAPI backend (30+ endpoints)
 │   ├── kannada_mashup_analyzer.py # Indian music analyzer (2400+ lines)
+│   ├── sandalwood_mixer.py        # Professional mixer (BPM sync, LUFS)
+│   ├── sandalwood_enhancements.py # Singer/Era detection, validation
 │   ├── audio_analyzer.py          # Core audio analysis
 │   ├── creative_remix.py          # Mashup creation modes
 │   ├── remix_engine.py            # Audio mixing/DSP
@@ -280,8 +427,11 @@ AI-Mixer/
 │           └── TaskProgress.jsx   # Live progress with SSE
 │
 ├── songs/                         # Input audio files
-└── remix_outputs/                 # Generated mashups + reports
+├── remix_outputs/                 # Generated mashups + reports
+└── custom_cue_points.json         # User-defined cue points
 ```
+
+---
 
 ## How It Works
 
@@ -306,9 +456,7 @@ Uses 4-method weighted scoring for robust detection:
 | > 50% | Filter Sweep | 4 bars | Gradual filter transition |
 | < 50% | Drop Swap | Instant | Hard cut on beat |
 
-### Compatibility Scoring (Enhanced in V2.2)
-
-Songs are scored on multiple factors (max 670 points):
+### Compatibility Scoring (670 points max)
 
 | Factor | Points | Description |
 |--------|--------|-------------|
@@ -319,9 +467,11 @@ Songs are scored on multiple factors (max 670 points):
 | **Tala** | 0-60 | Indian rhythm pattern matching |
 | **Spectral** | 0-50 | Frequency profile similarity |
 | **Harmonic Rhythm** | 0-40 | Chord change rate matching |
-| **Vocal** | -50 to +40 | Region-based overlap analysis (not flat penalty) |
+| **Vocal** | -50 to +40 | Region-based overlap analysis |
 | **Emotional** | 0-40 | Arc type matching (building, climax, etc.) |
 | **Pallavi** | 0-30 | Chorus section mashup potential |
+
+---
 
 ## Tech Stack
 
@@ -330,7 +480,8 @@ Songs are scored on multiple factors (max 670 points):
 - FastAPI (REST API with async tasks)
 - librosa (audio analysis)
 - Demucs (source separation)
-- rubberband (time-stretch/pitch-shift)
+- pyrubberband (time-stretch/pitch-shift)
+- pyloudnorm (LUFS normalization)
 - pydub (audio manipulation)
 - yt-dlp (YouTube downloads)
 
@@ -341,8 +492,11 @@ Songs are scored on multiple factors (max 670 points):
 - Lucide React (icons)
 - React Router DOM (navigation)
 
+---
+
 ## Implemented Features
 
+### Core Features
 - [x] Web UI with drag-and-drop
 - [x] Three mixing modes (Quick/DJ Set/Kannada)
 - [x] Visual compatibility graph
@@ -352,66 +506,96 @@ Songs are scored on multiple factors (max 670 points):
 - [x] Duration control for Kannada mode
 - [x] Audio + report generation
 - [x] Live progress with SSE
+
+### V2.1 Features
 - [x] YouTube URL download
 - [x] DJ software export (Rekordbox, Serato)
 - [x] Batch analysis mode
 - [x] Waveform zoom and scroll
 - [x] A/B transition preview
 - [x] Cue point markers on waveform
-- [x] **Professional Sandalwood mixer** (BPM sync, LUFS normalization)
-- [x] **Pallavi medley endpoint** (chorus-to-chorus mashups)
-- [x] **Beat-grid aligned transitions**
-- [x] **Multiple transition types** (crossfade, bass_swap, filter_sweep, echo_out)
-- [x] **Enhanced compatibility scoring** (670-point system with Pallavi potential)
 
-## Known Issues & Roadmap
+### V2.2 Features
+- [x] Professional Sandalwood mixer (BPM sync, LUFS normalization)
+- [x] Pallavi medley endpoint (chorus-to-chorus mashups)
+- [x] Beat-grid aligned transitions
+- [x] Multiple transition types (crossfade, bass_swap, filter_sweep, echo_out)
+- [x] Enhanced compatibility scoring (670-point system)
 
-### Fixed in V2.2
+### V2.3 Features
+- [x] Singer detection with 7 Kannada playback artist profiles
+- [x] Singer-aware EQ recommendations
+- [x] Film era detection (7 decades from 1960s-2020s)
+- [x] Audio file corruption/quality detection
+- [x] Real-time transition preview generation
+- [x] Custom cue point management
+- [x] Paginated file listings
+- [x] Feature discovery endpoint (`/api/features`)
 
-| Issue | Status | Fix |
-|-------|--------|-----|
-| CORS Open | **Fixed** | Restricted to localhost (configurable via `ALLOWED_ORIGINS`) |
-| Path Validation | **Fixed** | `validate_safe_path()` prevents directory traversal |
-| Input Validation | **Fixed** | Pydantic `Field` validators with patterns and limits |
-| Request Size Limits | **Fixed** | 100MB max upload size enforced |
-| Logging | **Fixed** | Proper logging framework replaces print statements |
+---
 
-### Roadmap (Next Steps)
+## Fixed Issues
 
-- [ ] Real-time audio preview before creating mashup
-- [ ] Custom transition point selection (manual cue points)
+| Issue | Version | Fix |
+|-------|---------|-----|
+| CORS Open | V2.2 | Restricted to localhost (configurable via `ALLOWED_ORIGINS`) |
+| Path Validation | V2.2 | `validate_safe_path()` prevents directory traversal |
+| Input Validation | V2.2 | Pydantic `Field` validators with patterns and limits |
+| Request Size Limits | V2.2 | 100MB max upload size enforced |
+| Logging | V2.2 | Proper logging framework replaces print statements |
+| No BPM Sync | V2.2 | Professional mixer with pyrubberband time-stretch |
+| Volume Inconsistency | V2.2 | LUFS normalization to -14 LUFS |
+
+---
+
+## Roadmap
+
+### Planned Features
 - [ ] Authentication and rate limiting for production
-- [ ] Pagination for file listings
 - [ ] Binary Serato crate format support
-- [ ] Audio file corruption detection
-- [ ] Singer-aware vocal EQ profiles
-- [ ] Film era detection (group songs by decade/style)
+- [ ] Real-time waveform mixing in browser
+- [ ] Composer-aware sequencing (group Hamsalekha songs together)
+- [ ] Multi-language support (Hindi, Telugu, Tamil mashups)
+- [ ] Machine learning singer identification improvement
+- [ ] Stem separation before mixing for cleaner results
+
+---
 
 ## API Examples
 
 ### Download from YouTube
-
 ```bash
 curl -X POST http://localhost:8000/api/songs/youtube \
   -H "Content-Type: application/json" \
   -d '{"url": "https://youtube.com/watch?v=..."}'
 ```
 
-### Batch Analyze Songs
-
+### Create Sandalwood Mashup
 ```bash
-curl -X POST http://localhost:8000/api/analyze/batch \
+curl -X POST http://localhost:8000/api/mashup/sandalwood \
   -H "Content-Type: application/json" \
-  -d '{"filenames": ["song1.mp3", "song2.mp3", "song3.mp3"]}'
+  -d '{
+    "filenames": ["song1.mp3", "song2.mp3", "song3.mp3"],
+    "style": "energetic",
+    "duration": 10
+  }'
+```
+
+### Detect Singer & Get EQ
+```bash
+curl -X POST http://localhost:8000/api/singer/detect \
+  -H "Content-Type: application/json" \
+  -d '{"filename": "song.mp3"}'
 ```
 
 ### Export to Rekordbox
-
 ```bash
 curl -X POST http://localhost:8000/api/export/dj \
   -H "Content-Type: application/json" \
   -d '{"filenames": ["song1.mp3", "song2.mp3"], "format": "rekordbox"}'
 ```
+
+---
 
 ## Contributing
 
