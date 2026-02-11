@@ -10,3 +10,4 @@ fastapi
 uvicorn
 pydantic
 yt-dlp
+pyloudnorm

@@ -70,6 +70,10 @@ from rekordbox_exporter import (
     generate_serato_crates,
     export_analysis_json,
 )
+from sandalwood_mixer import (
+    create_sandalwood_mashup,
+    create_pallavi_medley,
+)
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -851,50 +855,62 @@ async def mashup_sandalwood(req: SandalwoodMashupRequest):
             f.write(report)
         task["progress"] = 65
 
-        # Step 4: Convert analysis to setlist format for audio creation
+        # Step 4: Prepare for audio creation
         print("Preparing to create audio mashup...")
-        track_order = mashup_plan.get('track_order', [fn for fn in req.filenames])
         tracks_by_name = {t['filename']: t for t in all_tracks}
-
-        setlist = []
-        for fn in track_order:
-            track = tracks_by_name.get(fn)
-            if track:
-                setlist.append({
-                    'path': track['file_path'],
-                    'filename': track['filename'],
-                    'bpm': track['bpm'],
-                    'key': track['key'],
-                    'energy': track['energy'],
-                    'duration': track['duration'],
-                    'structure': track['structure'],
-                })
-
         task["progress"] = 70
 
-        # Step 5: Create the actual audio mashup
-        print(f"Creating {req.style} audio mashup from {len(setlist)} tracks...")
+        # Step 5: Create the actual audio mashup using professional Sandalwood mixer
+        print(f"Creating {req.style} audio mashup from {len(all_tracks)} tracks...")
+        print("Using professional Sandalwood mixer with BPM sync, LUFS normalization, and beat alignment")
 
-        # Map Kannada styles to DJ set styles
-        mix_style_map = {
-            'energetic': 'energetic',
-            'smooth': 'relaxed',
-            'showcase': 'pro',
-        }
-        mix_style = mix_style_map.get(req.style, 'energetic')
+        try:
+            # Use the new professional Sandalwood mixer
+            output_path = create_sandalwood_mashup(
+                tracks_analysis=all_tracks,
+                mashup_plan=mashup_plan,
+                output_dir=OUTPUT_DIR,
+                target_lufs=-14.0,  # YouTube standard
+                export_quality='high'  # 320kbps
+            )
+            actual_output = os.path.basename(output_path) if output_path else None
+            task["progress"] = 95
+        except Exception as mix_error:
+            print(f"Professional mixer failed: {mix_error}")
+            print("Falling back to basic continuous mix...")
 
-        # Create the continuous mix
-        output_filename = f"kannada_mashup_{req.style}_{timestamp}.mp3"
-        create_continuous_mix_from_setlist(setlist, mix_style, OUTPUT_DIR)
-        task["progress"] = 95
+            # Fallback to basic mixer if professional one fails
+            mix_style_map = {
+                'energetic': 'energetic',
+                'smooth': 'relaxed',
+                'showcase': 'pro',
+            }
+            mix_style = mix_style_map.get(req.style, 'energetic')
 
-        # Find the created output file (it uses a different naming convention)
-        output_files = sorted(
-            [f for f in os.listdir(OUTPUT_DIR) if f.startswith("ai_dj_set_") and f.endswith(".mp3")],
-            key=lambda f: os.path.getmtime(os.path.join(OUTPUT_DIR, f)),
-            reverse=True,
-        )
-        actual_output = output_files[0] if output_files else None
+            setlist = []
+            for fn in mashup_plan.get('track_order', req.filenames):
+                track = tracks_by_name.get(fn)
+                if track:
+                    setlist.append({
+                        'path': track['file_path'],
+                        'filename': track['filename'],
+                        'bpm': track['bpm'],
+                        'key': track['key'],
+                        'energy': track['energy'],
+                        'duration': track['duration'],
+                        'structure': track['structure'],
+                    })
+
+            create_continuous_mix_from_setlist(setlist, mix_style, OUTPUT_DIR)
+            task["progress"] = 95
+
+            # Find the created output file
+            output_files = sorted(
+                [f for f in os.listdir(OUTPUT_DIR) if f.startswith("ai_dj_set_") and f.endswith(".mp3")],
+                key=lambda f: os.path.getmtime(os.path.join(OUTPUT_DIR, f)),
+                reverse=True,
+            )
+            actual_output = output_files[0] if output_files else None
 
         # Also cache analyses
         cache = _load_analysis_cache()
@@ -919,6 +935,94 @@ async def mashup_sandalwood(req: SandalwoodMashupRequest):
         "filenames": req.filenames,
         "style": req.style,
         "duration": req.duration,
+    }
+
+
+# ------------------------------------------------------------------
+# Pallavi Medley - Signature Sandalwood mashup style
+# ------------------------------------------------------------------
+class PallaviMedleyRequest(BaseModel):
+    """Request for Pallavi-to-Pallavi medley creation."""
+    filenames: list[str] = Field(..., min_length=2, max_length=20)
+
+    @field_validator('filenames')
+    @classmethod
+    def validate_filenames(cls, v):
+        for f in v:
+            if '..' in f or f.startswith('/'):
+                raise ValueError('Invalid filename')
+        return v
+
+
+@app.post("/api/mashup/pallavi-medley")
+async def create_pallavi_medley_endpoint(req: PallaviMedleyRequest):
+    """
+    Create a Pallavi-to-Pallavi medley - the signature Sandalwood mashup style.
+    Extracts the catchiest Pallavi (chorus) sections and blends them together.
+    This is what makes Kannada film medleys special!
+    """
+    task = _create_task("pallavi_medley", len(req.filenames))
+
+    def _do_pallavi_medley():
+        try:
+            task["status"] = "running"
+            task["progress"] = 10
+
+            print(f"Creating Pallavi medley from {len(req.filenames)} tracks...")
+
+            # Get venv path for Demucs
+            venv_path = os.environ.get('VIRTUAL_ENV') or os.path.join(BASE_DIR, 'venv')
+
+            # Analyze all tracks
+            all_tracks = []
+            for i, filename in enumerate(req.filenames):
+                file_path = validate_safe_path(SONGS_DIR, filename)
+                if not os.path.exists(file_path):
+                    print(f"Warning: File not found: {filename}")
+                    continue
+
+                print(f"Analyzing [{i+1}/{len(req.filenames)}]: {filename}")
+                analysis = analyze_kannada_track_for_mashup(file_path, venv_path)
+                if analysis:
+                    analysis['filename'] = filename
+                    analysis['file_path'] = file_path
+                    all_tracks.append(analysis)
+
+                task["progress"] = 10 + int(50 * (i + 1) / len(req.filenames))
+
+            if len(all_tracks) < 2:
+                raise ValueError("Need at least 2 valid tracks with Pallavi sections")
+
+            task["progress"] = 60
+
+            # Create the Pallavi medley
+            print("Creating Pallavi medley...")
+            output_path = create_pallavi_medley(
+                tracks_analysis=all_tracks,
+                output_dir=OUTPUT_DIR,
+                target_lufs=-14.0
+            )
+
+            task["progress"] = 95
+            output_filename = os.path.basename(output_path) if output_path else None
+
+            print(f"Pallavi medley complete: {output_filename}")
+            return {
+                "output_filename": output_filename,
+                "track_count": len(all_tracks),
+                "type": "pallavi_medley",
+            }
+
+        except Exception as e:
+            logger.exception("Pallavi medley creation failed")
+            raise
+
+    _run_in_background(task, _do_pallavi_medley)
+    return {
+        "task_id": task["task_id"],
+        "status": "pending",
+        "filenames": req.filenames,
+        "type": "pallavi_medley",
     }
 
 
