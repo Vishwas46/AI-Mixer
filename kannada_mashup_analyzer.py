@@ -1918,16 +1918,92 @@ def calculate_kannada_mashup_compatibility(track1, track2):
     factors['harmonic_rhythm'] = {'score': hr_score}
     score += hr_score
 
-    # 8. Vocal Clash Penalty (-100 points if both have vocals in same regions)
-    vocal_clash = False
-    if track1.get('has_vocals') and track2.get('has_vocals'):
-        vocal_clash = True
-        score -= 100
+    # 8. Vocal Compatibility (improved: -50 to +40 points based on region analysis)
+    vocal_score = 0
+    vocal_analysis = {'has_clash': False, 'blend_type': 'none'}
 
-    factors['vocal_clash'] = {'has_clash': vocal_clash, 'penalty': -100 if vocal_clash else 0}
+    if track1.get('has_vocals') and track2.get('has_vocals'):
+        vr1 = track1.get('vocal_regions', [])
+        vr2 = track2.get('vocal_regions', [])
+
+        # Check actual vocal region overlap
+        if vr1 and vr2:
+            overlapping = 0
+            for r1 in vr1:
+                for r2 in vr2:
+                    # Check if regions overlap in time
+                    if r1.get('start', 0) < r2.get('end', 0) and r2.get('start', 0) < r1.get('end', 0):
+                        overlapping += 1
+
+            overlap_ratio = overlapping / max(len(vr1), len(vr2)) if max(len(vr1), len(vr2)) > 0 else 0
+
+            # Check if might be male-female duet (Anand Audio pattern)
+            is_duet = (track1.get('anand_audio_patterns', {}).get('is_duet', False) or
+                       track2.get('anand_audio_patterns', {}).get('is_duet', False))
+
+            if overlap_ratio < 0.2:
+                vocal_score = 40  # Excellent - vocals don't overlap much
+                vocal_analysis = {'has_clash': False, 'blend_type': 'sequential', 'overlap': overlap_ratio}
+            elif is_duet and overlap_ratio < 0.5:
+                vocal_score = 20  # Duet compatible
+                vocal_analysis = {'has_clash': False, 'blend_type': 'duet', 'overlap': overlap_ratio}
+            elif overlap_ratio < 0.4:
+                vocal_score = 0  # Neutral - some overlap
+                vocal_analysis = {'has_clash': False, 'blend_type': 'moderate', 'overlap': overlap_ratio}
+            else:
+                vocal_score = -50  # Likely clash but not as severe
+                vocal_analysis = {'has_clash': True, 'blend_type': 'clash', 'overlap': overlap_ratio}
+        else:
+            vocal_score = -30  # Unknown overlap, penalize slightly
+            vocal_analysis = {'has_clash': True, 'blend_type': 'unknown'}
+    elif track1.get('has_vocals') or track2.get('has_vocals'):
+        vocal_score = 30  # One has vocals, one doesn't - good for mixing
+        vocal_analysis = {'has_clash': False, 'blend_type': 'instrumental_vocal'}
+    else:
+        vocal_score = 20  # Both instrumental
+        vocal_analysis = {'has_clash': False, 'blend_type': 'both_instrumental'}
+
+    factors['vocal'] = {'score': vocal_score, **vocal_analysis}
+    score += vocal_score
+
+    # 9. Emotional Curve Compatibility (0-40 points) - NEW
+    if 'emotional_curve' in track1 and 'emotional_curve' in track2:
+        arc1 = track1['emotional_curve'].get('arc_type', 'unknown')
+        arc2 = track2['emotional_curve'].get('arc_type', 'unknown')
+
+        if arc1 == arc2:
+            emotion_score = 40  # Same arc = flows naturally
+        elif (arc1 in ['building', 'climax'] and arc2 in ['building', 'climax']) or \
+             (arc1 in ['descending', 'fadeout'] and arc2 in ['descending', 'fadeout']):
+            emotion_score = 30  # Compatible arc types
+        elif arc1 == 'unknown' or arc2 == 'unknown':
+            emotion_score = 20  # Unknown
+        else:
+            emotion_score = 10  # Contrasting arcs
+    else:
+        emotion_score = 20
+
+    factors['emotional'] = {'score': emotion_score}
+    score += emotion_score
+
+    # 10. Pallavi Mashup Potential (0-30 points) - NEW for Kannada
+    pallavi_score = 0
+    if 'section_classification' in track1 and 'section_classification' in track2:
+        pallavis1 = track1['section_classification'].get('pallavis', [])
+        pallavis2 = track2['section_classification'].get('pallavis', [])
+
+        if pallavis1 and pallavis2:
+            # Both have strong Pallavi sections - great for mashup
+            pallavi_score = 30
+        elif pallavis1 or pallavis2:
+            pallavi_score = 15
+
+    factors['pallavi_potential'] = {'score': pallavi_score}
+    score += pallavi_score
 
     # Calculate overall compatibility grade
-    max_score = 100 + 150 + 80 + 80 + 60 + 50 + 40  # 560 max
+    # Updated max: 100 + 150 + 80 + 80 + 60 + 50 + 40 + 40 + 40 + 30 = 670 max
+    max_score = 100 + 150 + 80 + 80 + 60 + 50 + 40 + 40 + 40 + 30
     percentage = (score / max_score) * 100
 
     if percentage >= 80:
@@ -2012,29 +2088,58 @@ def plan_kannada_mashup(all_tracks_analysis, target_duration_minutes=10, style='
     tracks_by_name = {t['filename']: t for t in all_tracks_analysis}
 
     # Sort tracks by energy for different styles
+    # Enhanced: Use energy arc optimization for better flow
     if style == 'energetic':
-        # Start medium, build to high, end high
-        sorted_tracks = sorted(all_tracks_analysis, key=lambda x: x['energy'])
-        start_track = sorted_tracks[len(sorted_tracks) // 3]  # Medium energy start
+        # Target energy arc: Low (30%) → Medium (50%) → Peak at 70% → High ending
+        # Build setlist that follows this arc
+        sorted_by_energy = sorted(all_tracks_analysis, key=lambda x: x['energy'])
+        n = len(sorted_by_energy)
+
+        # Categorize tracks into energy tiers
+        low_energy = sorted_by_energy[:n//3] if n >= 3 else sorted_by_energy[:1]
+        mid_energy = sorted_by_energy[n//3:2*n//3] if n >= 3 else sorted_by_energy[1:2] if n >= 2 else []
+        high_energy = sorted_by_energy[2*n//3:] if n >= 3 else sorted_by_energy[-1:] if n >= 1 else []
+
+        # Start with medium energy track
+        start_track = mid_energy[0] if mid_energy else sorted_by_energy[n//2]
     elif style == 'smooth':
-        # Consistent energy throughout
+        # Consistent energy throughout - sort by closest to average
         avg_energy = sum(t['energy'] for t in all_tracks_analysis) / len(all_tracks_analysis)
         sorted_tracks = sorted(all_tracks_analysis, key=lambda x: abs(x['energy'] - avg_energy))
         start_track = sorted_tracks[0]
     else:  # showcase - feature all hooks
-        # Order by hook score
+        # Order by hook score AND Pallavi sections
         sorted_tracks = sorted(all_tracks_analysis,
-                              key=lambda x: x.get('hooks_and_drops', {}).get('hooks', [{}])[0].get('hook_score', 0) if x.get('hooks_and_drops', {}).get('hooks') else 0,
+                              key=lambda x: (
+                                  len(x.get('section_classification', {}).get('pallavis', [])),  # Primary: Pallavi count
+                                  x.get('hooks_and_drops', {}).get('hooks', [{}])[0].get('hook_score', 0) if x.get('hooks_and_drops', {}).get('hooks') else 0
+                              ),
                               reverse=True)
         start_track = sorted_tracks[0]
 
-    # Build setlist
+    # Build setlist with improved energy arc
     setlist = [start_track]
     remaining = [t for t in all_tracks_analysis if t['filename'] != start_track['filename']]
     current_duration = 0
+    position_in_set = 0
+    total_tracks_estimate = min(len(all_tracks_analysis), int(target_duration_sec / 60))
 
     while remaining and current_duration < target_duration_sec:
         current_track = setlist[-1]
+        position_in_set += 1
+
+        # Calculate target energy based on position in set
+        progress = position_in_set / max(total_tracks_estimate, 1)
+        if style == 'energetic':
+            # Energy arc: build to peak at 70%, then maintain high
+            if progress < 0.3:
+                target_energy = 0.4 + progress * 0.5  # 0.4 → 0.55
+            elif progress < 0.7:
+                target_energy = 0.55 + (progress - 0.3) * 0.75  # 0.55 → 0.85
+            else:
+                target_energy = 0.8  # Maintain high for finale
+        else:
+            target_energy = current_track['energy']  # Smooth: maintain current
 
         # Find best next track
         best_next = None
@@ -2043,13 +2148,33 @@ def plan_kannada_mashup(all_tracks_analysis, target_duration_minutes=10, style='
         for candidate in remaining:
             key = (current_track['filename'], candidate['filename'])
             if key in compatibility_matrix:
-                score = compatibility_matrix[key]['percentage']
+                base_score = compatibility_matrix[key]['percentage']
 
-                # Bonus for energy progression in energetic style
+                # Energy arc bonus (0-25 points based on how close to target)
                 if style == 'energetic':
-                    energy_diff = candidate['energy'] - current_track['energy']
-                    if energy_diff > 0:
-                        score += 10  # Reward energy increase
+                    energy_diff = abs(candidate['energy'] - target_energy)
+                    energy_bonus = max(0, 25 - energy_diff * 50)
+                    score = base_score + energy_bonus
+
+                    # Extra bonus for energy increase toward peak
+                    if progress < 0.7 and candidate['energy'] > current_track['energy']:
+                        score += 15
+                elif style == 'smooth':
+                    # Penalize large energy jumps
+                    energy_jump = abs(candidate['energy'] - current_track['energy'])
+                    score = base_score - energy_jump * 30
+                else:  # showcase
+                    # Bonus for tracks with strong hooks/pallavis
+                    hook_bonus = 0
+                    if candidate.get('hooks_and_drops', {}).get('primary_hook'):
+                        hook_bonus += 10
+                    if candidate.get('section_classification', {}).get('pallavis'):
+                        hook_bonus += 15
+                    score = base_score + hook_bonus
+
+                # Tala matching bonus - critical for Kannada mashups
+                if current_track.get('tala', {}).get('tala_key') == candidate.get('tala', {}).get('tala_key'):
+                    score += 20  # Same tala = seamless transition
 
                 if score > best_score:
                     best_score = score
@@ -2094,28 +2219,70 @@ def plan_kannada_mashup(all_tracks_analysis, target_duration_minutes=10, style='
 
         clip_duration = clip_end - clip_start
 
-        # Determine transition to next track
+        # Determine transition to next track with Tala awareness
+        tala_sync_info = {}
         if i < len(setlist) - 1:
             next_track = setlist[i + 1]
             key = (track['filename'], next_track['filename'])
             compat = compatibility_matrix.get(key, {})
 
-            # Choose transition type based on compatibility and style
+            # Check Tala compatibility for transition timing
+            track_tala = track.get('tala', {})
+            next_tala = next_track.get('tala', {})
+            tala_matched = track_tala.get('tala_key') == next_tala.get('tala_key')
+
+            # Choose transition type based on compatibility, Tala, and style
             if compat.get('percentage', 0) > 70:
                 transition_type = 'eq_swap'
-                transition_bars = 8
+                # For Tala-matched tracks, use full Tala cycle for transition
+                if tala_matched and track_tala.get('beats_per_cycle'):
+                    transition_bars = track_tala['beats_per_cycle']  # Full Tala cycle
+                else:
+                    transition_bars = 8
             elif compat.get('percentage', 0) > 50:
                 transition_type = 'filter_sweep'
-                transition_bars = 4
+                transition_bars = track_tala.get('beats_per_cycle', 4) if tala_matched else 4
             else:
                 transition_type = 'drop_swap'
                 transition_bars = 0
 
-            transition_duration = (60 / track['bpm']) * 4 * transition_bars  # Convert bars to seconds
+            # Calculate Tala-aligned transition duration
+            bpm = track['bpm']
+            if tala_matched and track_tala.get('beats_per_cycle'):
+                # Align to Tala cycle boundary
+                tala_cycle = track_tala['beats_per_cycle']
+                transition_duration = (60 / bpm) * tala_cycle
+                tala_sync_info = {
+                    'tala_matched': True,
+                    'tala_name': track_tala.get('tala_name', 'unknown'),
+                    'cycle_duration': transition_duration,
+                    'sync_confidence': 0.9 if track_tala.get('cross_validated') else 0.7
+                }
+            else:
+                transition_duration = (60 / bpm) * 4 * transition_bars
+
+                if track_tala.get('tala_key') and next_tala.get('tala_key'):
+                    # Different Talas - suggest bridge technique
+                    tala_sync_info = {
+                        'tala_matched': False,
+                        'from_tala': track_tala.get('tala_name', 'unknown'),
+                        'to_tala': next_tala.get('tala_name', 'unknown'),
+                        'suggestion': 'Use drop swap or percussion fill to bridge'
+                    }
         else:
             transition_type = 'fade_out'
             transition_duration = 4
             transition_bars = 0
+
+        # Enhanced notes with Tala and section info
+        track_tala_name = track.get('tala', {}).get('tala_name', 'unknown')
+        track_scale = track.get('scale', {}).get('scale_name', 'unknown')
+        track_style = track.get('anand_audio_patterns', {}).get('song_style', 'unknown')
+        pallavi_count = len(track.get('section_classification', {}).get('pallavis', []))
+
+        notes = f"Tala: {track_tala_name}, Scale: {track_scale}, Style: {track_style}"
+        if pallavi_count > 0:
+            notes += f", Pallavis: {pallavi_count}"
 
         timeline.append({
             'position': i + 1,
@@ -2123,6 +2290,7 @@ def plan_kannada_mashup(all_tracks_analysis, target_duration_minutes=10, style='
             'bpm': track['bpm'],
             'key': track['key_str'],
             'energy': track['energy'],
+            'tala': track_tala_name,
             'mashup_start_time': mashup_time,
             'clip_start': float(clip_start),
             'clip_end': float(clip_end),
@@ -2130,7 +2298,8 @@ def plan_kannada_mashup(all_tracks_analysis, target_duration_minutes=10, style='
             'transition_to_next': transition_type,
             'transition_duration': float(transition_duration),
             'transition_bars': transition_bars,
-            'notes': f"Scale: {track.get('scale', {}).get('scale_name', 'unknown')}, Style: {track.get('anand_audio_patterns', {}).get('song_style', 'unknown')}"
+            'tala_sync': tala_sync_info,
+            'notes': notes
         })
 
         mashup_time += clip_duration - transition_duration  # Overlap during transition

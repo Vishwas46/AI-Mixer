@@ -31,7 +31,18 @@ from fastapi.responses import (
     StreamingResponse,
 )
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
+import re
+import logging
+
+# ---------------------------------------------------------------------------
+# Logging setup
+# ---------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger("ai-mixer")
 
 # ---------------------------------------------------------------------------
 # Project module imports
@@ -79,13 +90,48 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # ---------------------------------------------------------------------------
 app = FastAPI(title="AI-Mixer", version="1.0.0")
 
+# CORS configuration - restrict in production
+# For local development, allow localhost origins
+ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
+
+# Maximum upload size (100MB)
+MAX_UPLOAD_SIZE = 100 * 1024 * 1024
+
+
+def validate_safe_path(base_dir: str, filename: str) -> str:
+    """
+    Validate that a filename doesn't escape the base directory.
+    Returns the safe absolute path or raises HTTPException.
+    """
+    # Remove any path components from filename
+    safe_name = os.path.basename(filename)
+    # Remove any null bytes or other dangerous characters
+    safe_name = re.sub(r'[\x00-\x1f\x7f]', '', safe_name)
+    # Build the full path
+    full_path = os.path.abspath(os.path.join(base_dir, safe_name))
+    # Verify it's still within base_dir
+    if not full_path.startswith(os.path.abspath(base_dir)):
+        raise HTTPException(status_code=400, detail="Invalid filename - path traversal detected")
+    return full_path
+
+
+def validate_filename(filename: str) -> str:
+    """Validate and sanitize a filename."""
+    if not filename:
+        raise HTTPException(status_code=400, detail="Filename is required")
+    # Only allow safe characters
+    safe_name = re.sub(r'[^\w\s\-\.\(\)]', '_', os.path.basename(filename))
+    if not safe_name or safe_name.startswith('.'):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    return safe_name
 
 app.mount("/remix_outputs", StaticFiles(directory=OUTPUT_DIR), name="remix_outputs")
 
@@ -238,50 +284,108 @@ def _save_analysis_cache(cache: dict):
 # ---------------------------------------------------------------------------
 
 class AnalyzeRequest(BaseModel):
-    filename: Optional[str] = None
-    filenames: Optional[list[str]] = None
+    filename: Optional[str] = Field(None, min_length=1, max_length=255)
+    filenames: Optional[list[str]] = Field(None, max_length=100)
+
+    @field_validator('filename', 'filenames', mode='before')
+    @classmethod
+    def validate_no_path_traversal(cls, v):
+        if v is None:
+            return v
+        if isinstance(v, list):
+            for f in v:
+                if '..' in f or f.startswith('/'):
+                    raise ValueError('Invalid filename - path traversal not allowed')
+        elif isinstance(v, str):
+            if '..' in v or v.startswith('/'):
+                raise ValueError('Invalid filename - path traversal not allowed')
+        return v
 
 
 class KannadaAnalyzeRequest(BaseModel):
-    filename: str
+    filename: str = Field(..., min_length=1, max_length=255)
+
+    @field_validator('filename')
+    @classmethod
+    def validate_filename(cls, v):
+        if '..' in v or v.startswith('/'):
+            raise ValueError('Invalid filename')
+        return v
 
 
 class SingleMashupRequest(BaseModel):
-    songA: str
-    songB: str
-    output_name: str
+    songA: str = Field(..., min_length=1, max_length=255)
+    songB: str = Field(..., min_length=1, max_length=255)
+    output_name: str = Field(..., min_length=1, max_length=200)
+
+    @field_validator('songA', 'songB', 'output_name')
+    @classmethod
+    def validate_no_traversal(cls, v):
+        if '..' in v or v.startswith('/'):
+            raise ValueError('Invalid filename')
+        return v
 
 
 class DJSetRequest(BaseModel):
-    songs_dir: str = "songs/"
-    mix_style: str = "relaxed"
+    songs_dir: str = Field("songs/", max_length=255)
+    mix_style: str = Field("relaxed", pattern="^(relaxed|energetic|pro)$")
 
 
 class SandalwoodMashupRequest(BaseModel):
-    filenames: list[str]
-    style: str = "energetic"
-    duration: int = 10
+    filenames: list[str] = Field(..., min_length=2, max_length=50)
+    style: str = Field("energetic", pattern="^(energetic|smooth|showcase)$")
+    duration: int = Field(10, ge=1, le=60)
+
+    @field_validator('filenames')
+    @classmethod
+    def validate_filenames(cls, v):
+        for f in v:
+            if '..' in f or f.startswith('/'):
+                raise ValueError('Invalid filename')
+        return v
 
 
 class YouTubeDownloadRequest(BaseModel):
-    url: str
+    url: str = Field(..., min_length=10, max_length=500)
+
+    @field_validator('url')
+    @classmethod
+    def validate_youtube_url(cls, v):
+        youtube_patterns = [
+            r'(https?://)?(www\.)?youtube\.com/watch\?v=[\w-]+',
+            r'(https?://)?(www\.)?youtu\.be/[\w-]+',
+            r'(https?://)?(www\.)?youtube\.com/shorts/[\w-]+',
+            r'(https?://)?music\.youtube\.com/watch\?v=[\w-]+',
+        ]
+        for pattern in youtube_patterns:
+            if re.match(pattern, v):
+                return v
+        raise ValueError('Invalid YouTube URL')
 
 
 class BatchAnalyzeRequest(BaseModel):
-    filenames: list[str]
+    filenames: list[str] = Field(..., min_length=1, max_length=100)
+
+    @field_validator('filenames')
+    @classmethod
+    def validate_filenames(cls, v):
+        for f in v:
+            if '..' in f or f.startswith('/'):
+                raise ValueError('Invalid filename')
+        return v
 
 
 class BatchMashupRequest(BaseModel):
     """Request for batch mashup creation."""
-    combinations: list[dict]  # List of {songA, songB, style} dicts
-    mode: str = "single"  # "single" or "djset"
+    combinations: list[dict] = Field(..., min_length=1, max_length=50)
+    mode: str = Field("single", pattern="^(single|djset)$")
 
 
 class ExportRequest(BaseModel):
     """Request for DJ software export."""
-    filenames: list[str]
-    format: str = "rekordbox"  # "rekordbox", "serato", "json"
-    playlist_name: Optional[str] = None
+    filenames: list[str] = Field(..., min_length=1, max_length=100)
+    format: str = Field("rekordbox", pattern="^(rekordbox|serato|json)$")
+    playlist_name: Optional[str] = Field(None, max_length=100)
 
 
 # ===================================================================
@@ -438,18 +542,29 @@ async def upload_song(file: UploadFile = File(...)):
     if not file.filename:
         raise HTTPException(status_code=400, detail="No filename provided")
 
-    # Sanitize filename: keep only the basename
-    safe_name = os.path.basename(file.filename)
+    # Sanitize and validate filename
+    safe_name = validate_filename(file.filename)
     if not safe_name.lower().endswith((".mp3", ".wav", ".flac", ".ogg", ".m4a")):
         raise HTTPException(
             status_code=400,
             detail="Unsupported file format. Accepted: mp3, wav, flac, ogg, m4a",
         )
 
-    dest_path = os.path.join(SONGS_DIR, safe_name)
+    # Validate path is safe (no traversal)
+    dest_path = validate_safe_path(SONGS_DIR, safe_name)
+
+    # Read and validate file size
     contents = await file.read()
+    if len(contents) > MAX_UPLOAD_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size is {MAX_UPLOAD_SIZE // (1024*1024)}MB",
+        )
+
     with open(dest_path, "wb") as f:
         f.write(contents)
+
+    logger.info(f"Uploaded song: {safe_name} ({len(contents)} bytes)")
 
     stat = os.stat(dest_path)
     return {
