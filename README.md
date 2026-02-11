@@ -538,21 +538,6 @@ Uses 4-method weighted scoring for robust detection:
 - [x] Audio + report generation
 - [x] Live progress with SSE
 
-### V2.1 Features
-- [x] YouTube URL download
-- [x] DJ software export (Rekordbox, Serato)
-- [x] Batch analysis mode
-- [x] Waveform zoom and scroll
-- [x] A/B transition preview
-- [x] Cue point markers on waveform
-
-### V2.2 Features
-- [x] Professional Sandalwood mixer (BPM sync, LUFS normalization)
-- [x] Pallavi medley endpoint (chorus-to-chorus mashups)
-- [x] Beat-grid aligned transitions
-- [x] Multiple transition types (crossfade, bass_swap, filter_sweep, echo_out)
-- [x] Enhanced compatibility scoring (670-point system)
-
 ### V2.4 Features
 - [x] Sandalwood Studio UI with 4-step wizard
 - [x] Singer detection cards with confidence visualization
@@ -572,6 +557,21 @@ Uses 4-method weighted scoring for robust detection:
 - [x] Custom cue point management
 - [x] Paginated file listings
 - [x] Feature discovery endpoint (`/api/features`)
+
+### V2.2 Features
+- [x] Professional Sandalwood mixer (BPM sync, LUFS normalization)
+- [x] Pallavi medley endpoint (chorus-to-chorus mashups)
+- [x] Beat-grid aligned transitions
+- [x] Multiple transition types (crossfade, bass_swap, filter_sweep, echo_out)
+- [x] Enhanced compatibility scoring (670-point system)
+
+### V2.1 Features
+- [x] YouTube URL download
+- [x] DJ software export (Rekordbox, Serato)
+- [x] Batch analysis mode
+- [x] Waveform zoom and scroll
+- [x] A/B transition preview
+- [x] Cue point markers on waveform
 
 ---
 
