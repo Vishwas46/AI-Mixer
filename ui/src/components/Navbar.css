@@ -63,6 +63,24 @@
   background: rgba(99, 102, 241, 0.1);
 }
 
+/* Sandalwood link special styling */
+.nav-link.sandalwood-link {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(255, 140, 0, 0.1));
+  border: 1px solid rgba(255, 215, 0, 0.2);
+}
+
+.nav-link.sandalwood-link:hover {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.15), rgba(255, 140, 0, 0.15));
+  color: #FFD700;
+}
+
+.nav-link.sandalwood-link.active {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.2), rgba(255, 140, 0, 0.2));
+  color: #FFD700;
+  border-color: rgba(255, 215, 0, 0.4);
+  box-shadow: 0 0 12px rgba(255, 215, 0, 0.2);
+}
+
 @media (max-width: 768px) {
   .navbar {
     padding: 0 var(--space-md);

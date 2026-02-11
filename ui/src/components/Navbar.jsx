@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { Sparkles, Music, Disc3, Headphones } from 'lucide-react'
+import { Sparkles, Music, Disc3, Headphones, Radio } from 'lucide-react'
 import './Navbar.css'
 
 function Navbar() {
@@ -14,6 +14,10 @@ function Navbar() {
         <NavLink to="/" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} end>
           <Sparkles size={18} />
           <span>Create</span>
+        </NavLink>
+        <NavLink to="/sandalwood" className={({ isActive }) => `nav-link sandalwood-link ${isActive ? 'active' : ''}`}>
+          <Radio size={18} />
+          <span>Sandalwood</span>
         </NavLink>
         <NavLink to="/library" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
           <Music size={18} />
