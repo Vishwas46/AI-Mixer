@@ -717,6 +717,115 @@
   to { transform: rotate(360deg); }
 }
 
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--space-lg);
+}
+
+.modal-content {
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.preview-transition-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin: 0 auto var(--space-md);
+}
+
+/* YouTube Input Section */
+.youtube-input-section {
+  margin-top: var(--space-md);
+  padding: var(--space-md);
+}
+
+.youtube-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.youtube-icon {
+  color: #ff0000;
+}
+
+.youtube-input-row {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.youtube-input {
+  flex: 1;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-secondary);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
+.youtube-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.youtube-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Export Section */
+.export-section {
+  padding: var(--space-lg);
+  margin-bottom: var(--space-lg);
+}
+
+.export-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.export-header h3 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.export-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.export-buttons .btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.export-note {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
 @media (max-width: 640px) {
   .hero-title {
     font-size: 1.75rem;
@@ -736,5 +845,18 @@
 
   .style-buttons {
     grid-template-columns: 1fr;
+  }
+
+  .youtube-input-row {
+    flex-direction: column;
+  }
+
+  .export-buttons {
+    flex-direction: column;
+  }
+
+  .export-buttons .btn {
+    width: 100%;
+    justify-content: center;
   }
 }

@@ -1,18 +1,20 @@
 # AI-Mixer
 
-![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
+![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)
 
 **AI-Mixer** is a powerful, local-first tool for intelligently remixing and mashing up songs using AI. It features advanced audio analysis including **Indian music Tala detection**, a beautiful **Web UI**, and professional DJ mixing capabilities.
 
-## What's New in V2
+## What's New in V2.1
 
-- **Web UI** - Beautiful drag-and-drop interface with dark glassmorphism theme
-- **Kannada/Sandalwood Mode** - Optimized for Indian film music with Tala & Ragam detection
-- **Visual Compatibility Graph** - See how your songs connect at a glance
-- **One-Click Mashups** - Drop songs, pick a style, get your mix
-- **17-Step Deep Analysis** - Professional DJ-grade analysis for each track
+- **YouTube Download** - Paste a YouTube link, auto-download and analyze
+- **DJ Software Export** - Export to Rekordbox XML, Serato crates, or JSON
+- **Batch Processing** - Analyze multiple songs in parallel
+- **Waveform Zoom & Scroll** - Enhanced audio player with zoom controls
+- **A/B Transition Preview** - Preview transitions before creating mashup
+- **Cue Point Markers** - Visual markers for MIX IN, DROP, MIX OUT on waveform
+- **Volume Control** - Adjustable volume slider in audio player
 
 ## Features
 
@@ -45,6 +47,16 @@
 | 15 | Anand Audio Patterns | Dialogue intro, filmi style, duet detection |
 | 16 | DJ Cue Points | MIX IN, MIX OUT, DROP, LOOP, HOT CUES |
 | 17 | Transition Recommendations | EQ swap, filter sweep, drop swap |
+
+### New in V2.1: DJ Software Export
+
+Export your analyzed songs to professional DJ software:
+
+| Format | Software | Features Exported |
+|--------|----------|-------------------|
+| **Rekordbox XML** | Pioneer Rekordbox | BPM, Key, Cue Points, Memory Cues, Tempo Grid |
+| **Serato M3U** | Serato DJ | Playlist with metadata |
+| **JSON** | Custom Tools | Full analysis data for integration |
 
 ### Mixing Styles
 
@@ -112,12 +124,13 @@ cd ui && npm run dev
 ```
 
 Open http://localhost:3000 and:
-1. **Drop your songs** into the upload zone
+1. **Drop your songs** into the upload zone OR **paste a YouTube URL**
 2. **Choose a mode** (Quick Mashup / DJ Set / Kannada)
 3. **Pick a style** (Energetic / Smooth / Showcase)
 4. **Set duration** (for Kannada mode: 5-30 minutes)
-5. **Click "Analyze & Create"** - done!
-6. **Download** audio mashup + detailed report
+5. **Preview transitions** with A/B preview before creating
+6. **Click "Create"** - done!
+7. **Export to DJ software** (Rekordbox, Serato) or download mashup
 
 ### Option 2: Command Line
 
@@ -153,14 +166,44 @@ python kannada_mashup_analyzer.py \
 
 The backend exposes a REST API at `http://localhost:8000`:
 
+### Core Endpoints
+
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/songs` | GET | List all songs with analysis status |
 | `/api/songs/upload` | POST | Upload a new audio file |
+| `/api/songs/youtube` | POST | Download from YouTube URL |
+| `/api/analysis/{filename}` | GET | Get cached analysis for a file |
+| `/api/analysis/all` | GET | Get all cached analyses |
+
+### Analysis Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/analyze` | POST | Basic analysis (async) |
 | `/api/analyze/kannada` | POST | Deep 17-step Kannada analysis (async) |
+| `/api/analyze/batch` | POST | Batch analyze multiple files (async) |
+
+### Mashup Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
 | `/api/mashup/single` | POST | Create 2-song mashup (async) |
-| `/api/mashup/djset` | POST | Create DJ set (async) |
+| `/api/mashup/djset` | POST | Create continuous DJ mix (async) |
 | `/api/mashup/sandalwood` | POST | Create Kannada mashup + report (async) |
+| `/api/mashup/batch` | POST | Create multiple mashups (async) |
+
+### Export Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/export/dj` | POST | Export to DJ software (Rekordbox/Serato/JSON) |
+| `/api/youtube/info` | GET | Get YouTube video metadata |
+
+### Task & Output Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
 | `/api/tasks/{id}` | GET | Check task status and progress |
 | `/api/tasks/{id}/stream` | GET | SSE stream for live progress |
 | `/api/outputs` | GET | List generated mashups |
@@ -170,28 +213,30 @@ The backend exposes a REST API at `http://localhost:8000`:
 
 ```
 AI-Mixer/
-├── creative_remix.py          # Main CLI entry point
-├── audio_analyzer.py          # Core audio analysis (BPM, key, energy)
-├── remix_engine.py            # Mixing engine with Demucs separation
-├── kannada_mashup_analyzer.py # Indian music analyzer (2400+ lines)
-│                              # - Tala detection (7 talas)
-│                              # - Scale/Ragam analysis (10 scales)
-│                              # - DJ cue point generation
-│                              # - Mashup planning & compatibility
-├── web_server.py              # FastAPI backend (13 endpoints)
-├── ui/                        # React + Vite frontend
-│   ├── src/
-│   │   ├── pages/
-│   │   │   ├── Home.jsx       # Main mashup creation (drag-drop, modes)
-│   │   │   ├── Library.jsx    # Song management
-│   │   │   └── Results.jsx    # Output player
-│   │   └── components/
-│   │       ├── AudioPlayer.jsx         # WaveSurfer-based player
-│   │       ├── CompatibilityGraph.jsx  # Visual song connections
-│   │       ├── TaskProgress.jsx        # Live progress with SSE
-│   │       └── Navbar.jsx
-├── songs/                     # Input audio files (place your MP3s here)
-└── remix_outputs/             # Generated mashups + reports
+├── Backend (Python/FastAPI)
+│   ├── web_server.py              # FastAPI backend (20+ endpoints)
+│   ├── kannada_mashup_analyzer.py # Indian music analyzer (2400+ lines)
+│   ├── audio_analyzer.py          # Core audio analysis
+│   ├── creative_remix.py          # Mashup creation modes
+│   ├── remix_engine.py            # Audio mixing/DSP
+│   ├── youtube_downloader.py      # YouTube download integration
+│   └── rekordbox_exporter.py      # DJ software export
+│
+├── Frontend (React + Vite)
+│   └── ui/src/
+│       ├── pages/
+│       │   ├── Home.jsx           # Main mashup creation (drag-drop, modes)
+│       │   ├── Library.jsx        # Song management & analysis
+│       │   ├── Studio.jsx         # Advanced mixing modes
+│       │   └── Results.jsx        # Output player
+│       └── components/
+│           ├── AudioPlayer.jsx    # WaveSurfer with zoom + cue markers
+│           ├── CompatibilityGraph.jsx  # Visual song connections
+│           ├── TransitionPreview.jsx   # A/B preview component
+│           └── TaskProgress.jsx   # Live progress with SSE
+│
+├── songs/                         # Input audio files
+└── remix_outputs/                 # Generated mashups + reports
 ```
 
 ## How It Works
@@ -234,6 +279,7 @@ Songs are scored on multiple factors:
 - Demucs (source separation)
 - rubberband (time-stretch/pitch-shift)
 - pydub (audio manipulation)
+- yt-dlp (YouTube downloads)
 
 **Frontend:**
 - React 19 + Vite
@@ -253,16 +299,60 @@ Songs are scored on multiple factors:
 - [x] Duration control for Kannada mode
 - [x] Audio + report generation
 - [x] Live progress with SSE
+- [x] YouTube URL download
+- [x] DJ software export (Rekordbox, Serato)
+- [x] Batch analysis mode
+- [x] Waveform zoom and scroll
+- [x] A/B transition preview
+- [x] Cue point markers on waveform
 
-## Roadmap (Next Steps)
+## Known Issues & Roadmap
+
+### Critical Issues to Fix
+
+| Issue | Severity | Description |
+|-------|----------|-------------|
+| CORS Open | Critical | `allow_origins=["*"]` should be restricted in production |
+| Path Validation | Critical | Add validation to prevent directory traversal attacks |
+| Input Validation | High | Add Pydantic validators for all request models |
+| Temp File Cleanup | High | Ensure temp files are cleaned up on errors |
+| Request Size Limits | Medium | Add max upload size validation |
+
+### Roadmap (Next Steps)
 
 - [ ] Real-time audio preview before creating mashup
 - [ ] Custom transition point selection (manual cue points)
-- [ ] Export to DJ software (Rekordbox XML, Serato crates)
-- [ ] Batch processing mode for large libraries
-- [ ] YouTube URL input (download + analyze)
-- [ ] Waveform zoom and selection in UI
-- [ ] A/B preview of transitions
+- [ ] Authentication and rate limiting for production
+- [ ] Pagination for file listings
+- [ ] Proper logging framework (replace print statements)
+- [ ] Binary Serato crate format support
+- [ ] Audio file corruption detection
+
+## API Examples
+
+### Download from YouTube
+
+```bash
+curl -X POST http://localhost:8000/api/songs/youtube \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://youtube.com/watch?v=..."}'
+```
+
+### Batch Analyze Songs
+
+```bash
+curl -X POST http://localhost:8000/api/analyze/batch \
+  -H "Content-Type: application/json" \
+  -d '{"filenames": ["song1.mp3", "song2.mp3", "song3.mp3"]}'
+```
+
+### Export to Rekordbox
+
+```bash
+curl -X POST http://localhost:8000/api/export/dj \
+  -H "Content-Type: application/json" \
+  -d '{"filenames": ["song1.mp3", "song2.mp3"], "format": "rekordbox"}'
+```
 
 ## Contributing
 

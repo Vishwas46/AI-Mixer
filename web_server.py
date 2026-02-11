@@ -49,6 +49,16 @@ from kannada_mashup_analyzer import (
     generate_mashup_report,
     analyze_mashup_compatibility,
 )
+from youtube_downloader import (
+    download_from_youtube,
+    get_video_info,
+    is_valid_youtube_url,
+)
+from rekordbox_exporter import (
+    generate_rekordbox_xml,
+    generate_serato_crates,
+    export_analysis_json,
+)
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -251,6 +261,27 @@ class SandalwoodMashupRequest(BaseModel):
     filenames: list[str]
     style: str = "energetic"
     duration: int = 10
+
+
+class YouTubeDownloadRequest(BaseModel):
+    url: str
+
+
+class BatchAnalyzeRequest(BaseModel):
+    filenames: list[str]
+
+
+class BatchMashupRequest(BaseModel):
+    """Request for batch mashup creation."""
+    combinations: list[dict]  # List of {songA, songB, style} dicts
+    mode: str = "single"  # "single" or "djset"
+
+
+class ExportRequest(BaseModel):
+    """Request for DJ software export."""
+    filenames: list[str]
+    format: str = "rekordbox"  # "rekordbox", "serato", "json"
+    playlist_name: Optional[str] = None
 
 
 # ===================================================================
@@ -883,6 +914,301 @@ async def stream_audio(filename: str, request: Request):
             "Content-Length": str(content_length),
         },
     )
+
+
+# ------------------------------------------------------------------
+# YouTube download
+# ------------------------------------------------------------------
+@app.post("/api/songs/youtube")
+async def download_youtube(req: YouTubeDownloadRequest):
+    """Download audio from a YouTube URL."""
+    if not is_valid_youtube_url(req.url):
+        raise HTTPException(status_code=400, detail="Invalid YouTube URL")
+
+    task = _create_task()
+
+    def _do_download():
+        print(f"Starting YouTube download: {req.url}")
+
+        # First get video info
+        success, info = get_video_info(req.url)
+        if not success:
+            raise Exception(info.get("error", "Failed to get video info"))
+
+        print(f"Video: {info.get('title')} ({info.get('duration_string')})")
+        task["progress"] = 10
+
+        # Download
+        print("Downloading audio...")
+        task["progress"] = 20
+        success, message, filename = download_from_youtube(req.url, SONGS_DIR)
+
+        if not success:
+            raise Exception(message)
+
+        task["progress"] = 90
+        print(f"Download complete: {filename}")
+
+        return {
+            "filename": filename,
+            "title": info.get("title"),
+            "duration": info.get("duration"),
+            "message": message,
+        }
+
+    _run_in_background(task, _do_download)
+    return {"task_id": task["task_id"], "status": "pending", "url": req.url}
+
+
+@app.get("/api/youtube/info")
+async def get_youtube_info(url: str):
+    """Get metadata about a YouTube video without downloading."""
+    if not is_valid_youtube_url(url):
+        raise HTTPException(status_code=400, detail="Invalid YouTube URL")
+
+    success, info = get_video_info(url)
+    if not success:
+        raise HTTPException(status_code=400, detail=info.get("error", "Failed to get video info"))
+
+    return info
+
+
+# ------------------------------------------------------------------
+# Batch Analysis
+# ------------------------------------------------------------------
+@app.post("/api/analyze/batch")
+async def batch_analyze(req: BatchAnalyzeRequest):
+    """Analyze multiple songs in parallel using deep Kannada analysis."""
+    if not req.filenames:
+        raise HTTPException(status_code=400, detail="No filenames provided")
+
+    # Validate all files exist
+    for fn in req.filenames:
+        fpath = os.path.join(SONGS_DIR, fn)
+        if not os.path.isfile(fpath):
+            raise HTTPException(status_code=404, detail=f"Song file not found: {fn}")
+
+    task = _create_task()
+
+    def _do_batch_analysis():
+        venv_path = os.environ.get("VIRTUAL_ENV")
+        if not venv_path:
+            venv_path = os.path.abspath("./venv")
+
+        cache = _load_analysis_cache()
+        results = {}
+        total = len(req.filenames)
+
+        for idx, fn in enumerate(req.filenames):
+            fpath = os.path.join(SONGS_DIR, fn)
+            print(f"[{idx + 1}/{total}] Deep analyzing: {fn}")
+
+            analysis = analyze_kannada_track_for_mashup(fpath, venv_path)
+            cache[fpath] = analysis
+            results[fn] = analysis
+
+            progress = int(((idx + 1) / total) * 100)
+            task["progress"] = progress
+            print(f"[{idx + 1}/{total}] Complete ({progress}%)")
+
+        _save_analysis_cache(cache)
+        print(f"Batch analysis complete. {total} tracks analyzed.")
+
+        return {
+            "analyzed_count": len(results),
+            "filenames": list(results.keys()),
+        }
+
+    _run_in_background(task, _do_batch_analysis)
+    return {
+        "task_id": task["task_id"],
+        "status": "pending",
+        "filenames": req.filenames,
+        "count": len(req.filenames),
+    }
+
+
+# ------------------------------------------------------------------
+# Batch Mashup Creation
+# ------------------------------------------------------------------
+@app.post("/api/mashup/batch")
+async def batch_mashup(req: BatchMashupRequest):
+    """Create multiple mashups in batch."""
+    if not req.combinations:
+        raise HTTPException(status_code=400, detail="No combinations provided")
+
+    task = _create_task()
+
+    def _do_batch_mashup():
+        results = []
+        total = len(req.combinations)
+
+        for idx, combo in enumerate(req.combinations):
+            song_a = combo.get("songA")
+            song_b = combo.get("songB")
+            style = combo.get("style", "relaxed")
+
+            print(f"[{idx + 1}/{total}] Creating mashup: {song_a} + {song_b}")
+
+            song_a_path = os.path.join(SONGS_DIR, song_a)
+            song_b_path = os.path.join(SONGS_DIR, song_b)
+
+            if not os.path.isfile(song_a_path) or not os.path.isfile(song_b_path):
+                results.append({
+                    "songA": song_a,
+                    "songB": song_b,
+                    "status": "failed",
+                    "error": "File not found",
+                })
+                continue
+
+            try:
+                output_name = f"batch_mashup_{idx + 1}_{int(datetime.now().timestamp())}.mp3"
+                output_path = os.path.join(OUTPUT_DIR, output_name)
+
+                class Args:
+                    pass
+
+                args = Args()
+                args.songA_path = song_a_path
+                args.songB_path = song_b_path
+                args.out = output_path
+
+                run_single_mashup_mode(args)
+
+                results.append({
+                    "songA": song_a,
+                    "songB": song_b,
+                    "status": "completed",
+                    "output_filename": output_name,
+                })
+
+            except Exception as e:
+                results.append({
+                    "songA": song_a,
+                    "songB": song_b,
+                    "status": "failed",
+                    "error": str(e),
+                })
+
+            progress = int(((idx + 1) / total) * 100)
+            task["progress"] = progress
+
+        successful = sum(1 for r in results if r["status"] == "completed")
+        print(f"Batch complete: {successful}/{total} mashups created")
+
+        return {
+            "results": results,
+            "total": total,
+            "successful": successful,
+            "failed": total - successful,
+        }
+
+    _run_in_background(task, _do_batch_mashup)
+    return {
+        "task_id": task["task_id"],
+        "status": "pending",
+        "combination_count": len(req.combinations),
+    }
+
+
+# ------------------------------------------------------------------
+# DJ Software Export (Rekordbox, Serato)
+# ------------------------------------------------------------------
+@app.post("/api/export/dj")
+async def export_for_dj_software(req: ExportRequest):
+    """Export analysis to DJ software format (Rekordbox XML, Serato crates)."""
+    if not req.filenames:
+        raise HTTPException(status_code=400, detail="No filenames provided")
+
+    if req.format not in ("rekordbox", "serato", "json"):
+        raise HTTPException(status_code=400, detail="Format must be rekordbox, serato, or json")
+
+    task = _create_task()
+
+    def _do_export():
+        cache = _load_analysis_cache()
+        analysis_list = []
+
+        print(f"Preparing {req.format} export for {len(req.filenames)} tracks...")
+
+        for fn in req.filenames:
+            fpath = os.path.join(SONGS_DIR, fn)
+            if fpath in cache:
+                analysis_list.append(cache[fpath])
+            elif fn in cache:
+                analysis_list.append(cache[fn])
+            else:
+                print(f"Warning: No analysis found for {fn}")
+
+        if not analysis_list:
+            raise Exception("No analyzed tracks found. Run analysis first.")
+
+        task["progress"] = 50
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        if req.format == "rekordbox":
+            output_filename = f"rekordbox_export_{timestamp}.xml"
+            output_path = os.path.join(OUTPUT_DIR, output_filename)
+            generate_rekordbox_xml(
+                analysis_list,
+                output_path,
+                playlist_name=req.playlist_name or f"AI-Mixer {timestamp}"
+            )
+            print(f"Rekordbox XML exported: {output_filename}")
+
+        elif req.format == "serato":
+            output_filename = f"serato_crate_{timestamp}.m3u"
+            generate_serato_crates(
+                analysis_list,
+                OUTPUT_DIR,
+                crate_name=req.playlist_name or f"AI-Mixer_{timestamp}"
+            )
+            print(f"Serato crate exported: {output_filename}")
+
+        elif req.format == "json":
+            output_filename = f"analysis_export_{timestamp}.json"
+            output_path = os.path.join(OUTPUT_DIR, output_filename)
+            export_analysis_json(analysis_list, output_path)
+            print(f"JSON export: {output_filename}")
+
+        task["progress"] = 100
+
+        return {
+            "format": req.format,
+            "output_filename": output_filename,
+            "track_count": len(analysis_list),
+        }
+
+    _run_in_background(task, _do_export)
+    return {
+        "task_id": task["task_id"],
+        "status": "pending",
+        "format": req.format,
+        "filenames": req.filenames,
+    }
+
+
+# ------------------------------------------------------------------
+# Get all analysis data (for compatibility calculations)
+# ------------------------------------------------------------------
+@app.get("/api/analysis/all")
+async def get_all_analysis():
+    """Get all cached analysis data."""
+    cache = _load_analysis_cache()
+
+    # Filter to only include files in SONGS_DIR
+    song_analyses = {}
+    for path, analysis in cache.items():
+        if SONGS_DIR in path:
+            filename = os.path.basename(path)
+            song_analyses[filename] = analysis
+
+    return {
+        "count": len(song_analyses),
+        "analyses": song_analyses,
+    }
 
 
 # ---------------------------------------------------------------------------

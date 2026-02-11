@@ -4,10 +4,12 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Upload, Music, Sparkles, Play, Loader, Check,
   ArrowRight, Info, Zap, Heart, Clock, Volume2,
-  ChevronDown, X, Download, Disc3, ListMusic, Mic2
+  ChevronDown, X, Download, Disc3, ListMusic, Mic2,
+  Link, FileDown, Youtube
 } from 'lucide-react'
 import AudioPlayer from '../components/AudioPlayer'
 import CompatibilityGraph from '../components/CompatibilityGraph'
+import TransitionPreview from '../components/TransitionPreview'
 import './Home.css'
 
 // Mashup modes with friendly descriptions
@@ -61,6 +63,11 @@ function Home() {
   const [mashupResult, setMashupResult] = useState(null)
   const [dragOver, setDragOver] = useState(false)
   const [error, setError] = useState(null)
+  const [youtubeUrl, setYoutubeUrl] = useState('')
+  const [downloadingYoutube, setDownloadingYoutube] = useState(false)
+  const [showExportOptions, setShowExportOptions] = useState(false)
+  const [showTransitionPreview, setShowTransitionPreview] = useState(false)
+  const [previewPair, setPreviewPair] = useState(null)
 
   const currentMode = MASHUP_MODES.find(m => m.id === selectedMode)
 
@@ -143,6 +150,104 @@ function Home() {
     setAnalysisResults(null)
     setBestMashup(null)
     setMashupResult(null)
+  }
+
+  // YouTube download handler
+  const handleYoutubeDownload = async () => {
+    if (!youtubeUrl.trim()) return
+
+    setDownloadingYoutube(true)
+    setError(null)
+
+    try {
+      const res = await fetch('/api/songs/youtube', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: youtubeUrl.trim() })
+      })
+
+      if (!res.ok) {
+        const errData = await res.json()
+        throw new Error(errData.detail || 'Failed to start download')
+      }
+
+      const taskData = await res.json()
+
+      // Add placeholder song
+      setSongs(prev => [...prev, { name: 'Downloading from YouTube...', status: 'uploading' }])
+
+      // Poll for completion
+      while (true) {
+        await new Promise(r => setTimeout(r, 2000))
+        const statusRes = await fetch(`/api/tasks/${taskData.task_id}`)
+        const status = await statusRes.json()
+
+        if (status.status === 'completed') {
+          const filename = status.result.filename
+          setSongs(prev => prev.map(s =>
+            s.name === 'Downloading from YouTube...'
+              ? { name: filename, status: 'ready' }
+              : s
+          ))
+          setYoutubeUrl('')
+          break
+        } else if (status.status === 'failed') {
+          throw new Error(status.error || 'Download failed')
+        }
+      }
+    } catch (err) {
+      setError(err.message)
+      setSongs(prev => prev.filter(s => s.name !== 'Downloading from YouTube...'))
+    }
+
+    setDownloadingYoutube(false)
+  }
+
+  // Export to DJ software
+  const handleExport = async (format) => {
+    const analyzedSongs = songs.filter(s => s.status === 'analyzed')
+    if (analyzedSongs.length === 0) {
+      setError('Analyze songs first before exporting')
+      return
+    }
+
+    try {
+      const res = await fetch('/api/export/dj', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filenames: analyzedSongs.map(s => s.name),
+          format: format,
+          playlist_name: `AI-Mixer Export`
+        })
+      })
+
+      if (!res.ok) {
+        const errData = await res.json()
+        throw new Error(errData.detail || 'Export failed')
+      }
+
+      const taskData = await res.json()
+
+      // Poll for completion
+      while (true) {
+        await new Promise(r => setTimeout(r, 1000))
+        const statusRes = await fetch(`/api/tasks/${taskData.task_id}`)
+        const status = await statusRes.json()
+
+        if (status.status === 'completed') {
+          // Download the file
+          const filename = status.result.output_filename
+          window.open(`/remix_outputs/${filename}`, '_blank')
+          setShowExportOptions(false)
+          break
+        } else if (status.status === 'failed') {
+          throw new Error(status.error || 'Export failed')
+        }
+      }
+    } catch (err) {
+      setError(err.message)
+    }
   }
 
   // Main analysis function
@@ -457,6 +562,32 @@ function Home() {
 
   return (
     <div className="home-page">
+      {/* Transition Preview Modal */}
+      <AnimatePresence>
+        {showTransitionPreview && previewPair && (
+          <motion.div
+            className="modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowTransitionPreview(false)}
+          >
+            <motion.div
+              className="modal-content"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+            >
+              <TransitionPreview
+                songA={previewPair.songA}
+                songB={previewPair.songB}
+                onClose={() => setShowTransitionPreview(false)}
+              />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Hero Section */}
       <section className="hero">
         <motion.div
@@ -535,6 +666,38 @@ function Home() {
               </div>
             </div>
           )}
+        </div>
+
+        {/* YouTube URL Input */}
+        <div className="youtube-input-section glass-card">
+          <div className="youtube-header">
+            <Youtube size={20} className="youtube-icon" />
+            <span>Or paste a YouTube link</span>
+          </div>
+          <div className="youtube-input-row">
+            <input
+              type="url"
+              className="youtube-input"
+              placeholder="https://youtube.com/watch?v=..."
+              value={youtubeUrl}
+              onChange={e => setYoutubeUrl(e.target.value)}
+              disabled={downloadingYoutube}
+            />
+            <button
+              className="btn btn-primary"
+              onClick={handleYoutubeDownload}
+              disabled={!youtubeUrl.trim() || downloadingYoutube}
+            >
+              {downloadingYoutube ? (
+                <Loader className="spin" size={16} />
+              ) : (
+                <>
+                  <Download size={16} />
+                  Download
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -692,14 +855,26 @@ function Home() {
                 </div>
 
                 {bestMashup && selectedMode === 'quick' && (
-                  <div className="reasons-list">
-                    {bestMashup.reasons.map((reason, i) => (
-                      <div key={i} className={`reason-item ${reason.good ? 'good' : 'neutral'}`}>
-                        {reason.good ? <Check size={16} /> : <Info size={16} />}
-                        <span>{reason.text}</span>
-                      </div>
-                    ))}
-                  </div>
+                  <>
+                    <div className="reasons-list">
+                      {bestMashup.reasons.map((reason, i) => (
+                        <div key={i} className={`reason-item ${reason.good ? 'good' : 'neutral'}`}>
+                          {reason.good ? <Check size={16} /> : <Info size={16} />}
+                          <span>{reason.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      className="btn btn-secondary preview-transition-btn"
+                      onClick={() => {
+                        setPreviewPair({ songA: bestMashup.song1, songB: bestMashup.song2 })
+                        setShowTransitionPreview(true)
+                      }}
+                    >
+                      <Play size={16} />
+                      Preview Transition
+                    </button>
+                  </>
                 )}
 
                 <motion.button
@@ -794,6 +969,40 @@ function Home() {
                 </button>
               </motion.div>
             )}
+
+            {/* Export Options */}
+            <div className="export-section glass-card">
+              <div className="export-header">
+                <FileDown size={20} />
+                <h3>Export to DJ Software</h3>
+              </div>
+              <div className="export-buttons">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => handleExport('rekordbox')}
+                >
+                  <Disc3 size={16} />
+                  Rekordbox XML
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => handleExport('serato')}
+                >
+                  <Music size={16} />
+                  Serato Crate
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => handleExport('json')}
+                >
+                  <FileDown size={16} />
+                  JSON Export
+                </button>
+              </div>
+              <p className="export-note">
+                Export cue points, BPM, key, and more to your DJ software
+              </p>
+            </div>
 
             {/* All Connections */}
             <div className="all-matches glass-card">
