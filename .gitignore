@@ -18,14 +18,13 @@ __pycache__/
 .cache/
 analysis_cache.json
 
-# Output files
-*.mp3
-*.png
-
-# Analysis artifacts
-visualize_transition.py
+# Audio files & outputs
+songs/
+remix_outputs/
 transition_analysis/
 
-# Legal documents
-legal_brief.md
-legal_brief.pdf
+# Runtime artifacts
+status.json
+task_status.json
+trigger_analysis.json
+web_server.log
