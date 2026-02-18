@@ -155,20 +155,22 @@ The Sandalwood/Kannada mashup mode now uses a **professional-grade audio engine*
 
 | Feature | Description | Benefit |
 |---------|-------------|---------|
+| **Phase-Aligned Timeline** | Tracks placed on a timeline buffer with downbeat alignment | No drift between tracks |
 | **BPM Synchronization** | Time-stretch all tracks to common tempo using pyrubberband | No beat clashes between songs |
 | **LUFS Normalization** | Normalize to -14 LUFS (YouTube standard) | Consistent volume, broadcast-ready |
 | **Beat-Grid Alignment** | Transitions snap to actual beat positions | Professional, on-beat mixing |
 | **Key Compatibility** | Detect and optionally pitch-shift incompatible keys | Harmonic mixing |
-| **Tala-Aware Transitions** | Align transitions to Tala cycle boundaries | Respects Indian rhythmic structure |
+| **Tala-Aware Transitions** | Snap transitions to Tala cycle boundaries | Respects Indian rhythmic structure |
+| **Butterworth EQ Filters** | Professional-grade HPF/LPF via scipy.signal | Clean bass swaps and filter sweeps |
 
 ### Professional Transition Types
 
 | Type | Description | Best For |
 |------|-------------|----------|
-| `crossfade` | Equal-power crossfade | General purpose |
-| `bass_swap` | High-pass outgoing, full incoming | Building energy |
-| `filter_sweep` | Progressive low-pass on outgoing | Avoiding vocal clash |
-| `echo_out` | Delay/reverb tail on outgoing | Dramatic energy drops |
+| `crossfade` | Equal-power crossfade (sqrt curves) | General purpose |
+| `bass_swap` | Butterworth HPF on outgoing, full incoming | Building energy |
+| `filter_sweep` | Progressive Butterworth LPF on outgoing | Avoiding vocal clash |
+| `echo_out` | Multi-tap delay tail on outgoing | Dramatic energy drops |
 
 ### Pallavi Medley Endpoint
 
