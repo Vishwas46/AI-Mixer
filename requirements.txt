@@ -11,3 +11,4 @@ uvicorn
 pydantic
 yt-dlp
 pyloudnorm
+scipy
