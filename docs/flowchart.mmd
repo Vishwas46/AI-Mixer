@@ -1,0 +1,47 @@
+graph TD
+    subgraph "1. Start"
+        A["Command: `python creative_remix.py --mode dj_set --mix_style pro`"];
+    end
+
+    subgraph "2. Orchestration (in creative_remix.py)"
+        B["<b>run_dj_set_mode()</b><br/>Main function to manage the process"];
+        C["<b>curate_setlist()</b><br/>The 'AI DJ' that analyzes compatibility (key, BPM, energy) and orders the tracks"];
+        D["<b>create_continuous_mix_from_setlist()</b><br/>Builds the final continuous mix as a single MP3 file"];
+    end
+
+    subgraph "3. Analysis (in audio_analyzer.py)"
+        E["<b>analyze_audio_local()</b><br/>Analyzes a song's BPM, key, and energy"];
+        F["<b>analyze_structure()</b><br/>Finds the song's structure, like intros and outros"];
+        G["<b>analyze_vocal_presence()</b><br/>Detects if a song has vocals"];
+    end
+
+    subgraph "4. Core Technologies"
+        H["Librosa<br/><i>(Python library for audio analysis)</i>"];
+        I["Demucs<br/><i>(AI model for source separation)</i>"];
+        J["Pydub<br/><i>(Python library for audio manipulation)</i>"];
+    end
+    
+    subgraph "5. Data & Output"
+        K["analysis_cache.json<br/><i>(Saves analysis results to speed up future runs)</i>"];
+        L["Curated Setlist<br/><i>(The final ordered list of tracks)</i>"];
+        M["ai_dj_set_pro_....mp3<br/><i>(The final output file)</i>"];
+    end
+
+    A --> B;
+    
+    B -- "For each song" --> E;
+    B -- "Reads from / Writes to" --> K;
+    
+    E --> H;
+    E -- "Calls" --> F;
+    F --> H;
+    
+    B -- "For each song" --> G;
+    G --> I;
+    
+    B -- "Calls" --> C;
+    C --> L;
+    L --> D;
+    
+    D --> J;
+    D --> M;
