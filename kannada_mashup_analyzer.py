@@ -2399,6 +2399,206 @@ def generate_mashup_report(mashup_plan):
 
 
 # =============================================================================
+# MULTI-TRACK CLUSTERING FOR INTELLIGENT MASHUP PLANNING
+# =============================================================================
+
+def cluster_tracks_for_mashup(all_tracks_analysis, default_duration=15):
+    """
+    Cluster tracks into compatible groups for multiple mashups.
+
+    Uses a greedy partition algorithm that repeatedly calls plan_kannada_mashup()
+    on the remaining pool of tracks. Each call picks the best compatible cluster,
+    which is removed from the pool before the next iteration.
+
+    Args:
+        all_tracks_analysis: List of analysis dicts from analyze_kannada_track_for_mashup
+        default_duration: Target duration per group in minutes (default 15)
+
+    Returns:
+        dict: {
+            'groups': [{ 'group_id', 'name', 'style', 'track_order', 'track_count',
+                         'plan', 'avg_compatibility', 'estimated_duration_minutes' }],
+            'excluded': [{ 'filename', 'reason', 'best_score' }],
+            'matrix_summary': { 'total_pairs', 'grade_A', 'grade_B', 'grade_C', 'grade_D', 'grade_F' }
+        }
+    """
+    print(f"\n{'='*60}")
+    print("TRACK CLUSTERING ENGINE")
+    print(f"Clustering {len(all_tracks_analysis)} tracks into optimal groups")
+    print(f"Target duration per group: {default_duration} minutes")
+    print(f"{'='*60}\n")
+
+    if len(all_tracks_analysis) < 2:
+        return {
+            'groups': [],
+            'excluded': [{'filename': t['filename'], 'reason': 'Need at least 2 tracks', 'best_score': 0}
+                         for t in all_tracks_analysis],
+            'matrix_summary': {'total_pairs': 0, 'grade_A': 0, 'grade_B': 0, 'grade_C': 0, 'grade_D': 0, 'grade_F': 0}
+        }
+
+    # Step 1: Build full NxN compatibility matrix
+    print("Building full compatibility matrix...")
+    compatibility_matrix = {}
+    for i, track1 in enumerate(all_tracks_analysis):
+        for j, track2 in enumerate(all_tracks_analysis):
+            if i != j:
+                key = (track1['filename'], track2['filename'])
+                compatibility_matrix[key] = calculate_kannada_mashup_compatibility(track1, track2)
+
+    # Compute matrix summary (grade distribution)
+    grade_counts = {'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0}
+    unique_pairs_seen = set()
+    for (t1, t2), compat in compatibility_matrix.items():
+        pair_key = tuple(sorted([t1, t2]))
+        if pair_key not in unique_pairs_seen:
+            unique_pairs_seen.add(pair_key)
+            grade_counts[compat['grade']] = grade_counts.get(compat['grade'], 0) + 1
+
+    matrix_summary = {
+        'total_pairs': len(unique_pairs_seen),
+        'grade_A': grade_counts.get('A', 0),
+        'grade_B': grade_counts.get('B', 0),
+        'grade_C': grade_counts.get('C', 0),
+        'grade_D': grade_counts.get('D', 0),
+        'grade_F': grade_counts.get('F', 0),
+    }
+    print(f"Matrix: {matrix_summary['total_pairs']} pairs — "
+          f"A:{matrix_summary['grade_A']} B:{matrix_summary['grade_B']} "
+          f"C:{matrix_summary['grade_C']} D:{matrix_summary['grade_D']} "
+          f"F:{matrix_summary['grade_F']}")
+
+    # Step 2: Find tracks that are incompatible with everything (best score < 35%)
+    excluded = []
+    tracks_by_name = {t['filename']: t for t in all_tracks_analysis}
+    viable_filenames = set(t['filename'] for t in all_tracks_analysis)
+
+    for track in all_tracks_analysis:
+        best_score = 0
+        for other in all_tracks_analysis:
+            if track['filename'] != other['filename']:
+                key = (track['filename'], other['filename'])
+                score = compatibility_matrix[key]['percentage']
+                best_score = max(best_score, score)
+
+        if best_score < 35:
+            excluded.append({
+                'filename': track['filename'],
+                'reason': f'Incompatible with all tracks (best match: {best_score:.1f}%)',
+                'best_score': round(best_score, 1)
+            })
+            viable_filenames.discard(track['filename'])
+            print(f"  Excluded: {track['filename']} (best compatibility: {best_score:.1f}%)")
+
+    # Step 3: Greedy partition — repeatedly plan mashups from remaining pool
+    remaining = [t for t in all_tracks_analysis if t['filename'] in viable_filenames]
+    groups = []
+    group_id = 0
+
+    print(f"\nPartitioning {len(remaining)} viable tracks into groups...")
+
+    while len(remaining) >= 2:
+        group_id += 1
+
+        # Run planner on remaining tracks with 'auto' style detection
+        plan = plan_kannada_mashup(
+            remaining,
+            target_duration_minutes=default_duration,
+            style='energetic'  # Default, will auto-assign below
+        )
+
+        if 'error' in plan or plan.get('total_tracks', 0) < 2:
+            # Can't form a valid group from remaining tracks
+            break
+
+        selected_filenames = set(plan.get('track_order', []))
+
+        if len(selected_filenames) < 2:
+            break
+
+        # Get analysis objects for selected tracks
+        selected_tracks = [t for t in remaining if t['filename'] in selected_filenames]
+
+        # Auto-assign style based on group characteristics
+        energies = [t['energy'] for t in selected_tracks]
+        mean_energy = sum(energies) / len(energies)
+        energy_variance = sum((e - mean_energy) ** 2 for e in energies) / len(energies)
+
+        pallavi_count = sum(
+            len(t.get('section_classification', {}).get('pallavis', []))
+            for t in selected_tracks
+        )
+        pallavi_ratio = pallavi_count / len(selected_tracks)
+
+        if mean_energy > 0.65:
+            auto_style = 'energetic'
+        elif energy_variance < 0.01:
+            auto_style = 'smooth'
+        elif pallavi_ratio > 0.6:
+            auto_style = 'showcase'
+        else:
+            auto_style = 'energetic'
+
+        # Re-plan with the correct style if different
+        if auto_style != 'energetic':
+            plan = plan_kannada_mashup(
+                selected_tracks,
+                target_duration_minutes=default_duration,
+                style=auto_style
+            )
+
+        # Build group info
+        group_name = f"Group {group_id} — {auto_style.capitalize()}"
+        avg_compat = plan.get('average_compatibility', 0)
+
+        groups.append({
+            'group_id': group_id,
+            'name': group_name,
+            'style': auto_style,
+            'track_order': plan.get('track_order', []),
+            'track_count': len(selected_filenames),
+            'plan': plan,
+            'avg_compatibility': round(avg_compat, 1),
+            'estimated_duration_minutes': round(plan.get('estimated_duration_minutes', 0), 1),
+            'timeline': plan.get('timeline', []),
+            'mixing_instructions': plan.get('mixing_instructions', []),
+            'warnings': plan.get('warnings', []),
+            'best_pairs': plan.get('best_pairs', []),
+        })
+
+        print(f"  {group_name}: {len(selected_filenames)} tracks, "
+              f"~{plan.get('estimated_duration_minutes', 0):.1f} min, "
+              f"avg compat: {avg_compat:.1f}%")
+
+        # Remove selected tracks from remaining pool
+        remaining = [t for t in remaining if t['filename'] not in selected_filenames]
+
+    # Any leftover single tracks go to excluded
+    for track in remaining:
+        # Find their best score among all tracks
+        best_score = 0
+        for other in all_tracks_analysis:
+            if track['filename'] != other['filename']:
+                key = (track['filename'], other['filename'])
+                if key in compatibility_matrix:
+                    best_score = max(best_score, compatibility_matrix[key]['percentage'])
+
+        excluded.append({
+            'filename': track['filename'],
+            'reason': 'Leftover after grouping (no compatible group available)',
+            'best_score': round(best_score, 1)
+        })
+        print(f"  Leftover: {track['filename']} (best: {best_score:.1f}%)")
+
+    print(f"\nClustering complete: {len(groups)} groups, {len(excluded)} excluded")
+
+    return {
+        'groups': groups,
+        'excluded': excluded,
+        'matrix_summary': matrix_summary,
+    }
+
+
+# =============================================================================
 # MAIN EXTENDED ANALYSIS FUNCTION (V2 with DJ Features)
 # =============================================================================
 

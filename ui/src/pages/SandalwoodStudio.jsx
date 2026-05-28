@@ -382,8 +382,20 @@ export default function SandalwoodStudio() {
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState(null);
   const [customCuePoints, setCustomCuePoints] = useState({});
+  const [planData, setPlanData] = useState(null);
+  const [planId, setPlanId] = useState(null);
+  const [groupStyles, setGroupStyles] = useState({});
+  const [isPlanLoading, setIsPlanLoading] = useState(false);
 
-  const steps = ['Select Tracks', 'Analyze', 'Configure', 'Create'];
+  const steps = ['Select Tracks', 'Analyze', 'Review Plan', 'Configure', 'Results'];
+
+  const getGradeLetter = (percentage) => {
+    if (percentage >= 80) return 'A';
+    if (percentage >= 65) return 'B';
+    if (percentage >= 50) return 'C';
+    if (percentage >= 35) return 'D';
+    return 'F';
+  };
 
   const fetchSongs = async () => {
     try {
@@ -530,7 +542,7 @@ export default function SandalwoodStudio() {
         pollTask(data.task_id, (result) => {
           setResult(result);
           setIsCreating(false);
-          setCurrentStep(3);
+          setCurrentStep(4);
         });
       }
     } catch (err) {
@@ -558,11 +570,75 @@ export default function SandalwoodStudio() {
         pollTask(data.task_id, (result) => {
           setResult(result);
           setIsCreating(false);
-          setCurrentStep(3);
+          setCurrentStep(4);
         });
       }
     } catch (err) {
       console.error('Pallavi medley creation failed:', err);
+      setIsCreating(false);
+    }
+  };
+
+  const generatePlan = async () => {
+    setIsPlanLoading(true);
+    setProgress(0);
+    try {
+      const res = await fetch('http://localhost:8000/api/mashup/sandalwood/plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filenames: selectedTracks.map(t => t.name),
+          duration: duration,
+        }),
+      });
+      const data = await res.json();
+      if (data.task_id) {
+        setTaskId(data.task_id);
+        pollTask(data.task_id, (result) => {
+          setPlanData(result);
+          setPlanId(result.plan_id);
+          const styles = {};
+          (result.groups || []).forEach(g => {
+            styles[g.group_id] = g.style;
+          });
+          setGroupStyles(styles);
+          setIsPlanLoading(false);
+          setCurrentStep(2);
+        });
+      }
+    } catch (err) {
+      console.error('Plan generation failed:', err);
+      setIsPlanLoading(false);
+    }
+  };
+
+  const createFromPlan = async () => {
+    setIsCreating(true);
+    setProgress(0);
+    try {
+      const groups = Object.entries(groupStyles).map(([gid, style]) => ({
+        group_id: parseInt(gid),
+        style: style,
+      }));
+      const res = await fetch('http://localhost:8000/api/mashup/sandalwood/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan_id: planId,
+          groups: groups,
+        }),
+      });
+      const data = await res.json();
+      if (data.task_id) {
+        setTaskId(data.task_id);
+        pollTask(data.task_id, (result) => {
+          setResult(result);
+          setIsCreating(false);
+          setCurrentStep(4);
+        });
+      }
+    } catch (err) {
+      console.error('Create from plan failed:', err);
       setIsCreating(false);
     }
   };
@@ -773,20 +849,122 @@ export default function SandalwoodStudio() {
                 </button>
                 <motion.button
                   className="btn btn-primary btn-lg"
-                  onClick={() => setCurrentStep(2)}
-                  disabled={selectedTracks.some(t => !t.analysis && !t.has_analysis)}
+                  onClick={generatePlan}
+                  disabled={selectedTracks.some(t => !t.analysis && !t.has_analysis) || isPlanLoading}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  Continue
-                  <ChevronRight size={18} />
+                  {isPlanLoading ? (
+                    <><RefreshCw size={18} className="spin" /> Generating Plan...</>
+                  ) : (
+                    <>Generate Plan <ChevronRight size={18} /></>
+                  )}
                 </motion.button>
               </div>
             </motion.div>
           )}
 
-          {/* Step 2: Configure */}
-          {currentStep === 2 && (
+          {/* Step 2: Review Plan */}
+          {currentStep === 2 && planData && (
+            <motion.div
+              key="step-2-plan"
+              className="step-content"
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -50 }}
+            >
+              <div className="plan-review">
+                {/* Matrix Summary */}
+                <div className="matrix-summary glass-card">
+                  <h3>Compatibility Matrix</h3>
+                  <div className="matrix-stats">
+                    <span className="grade-badge grade-A">A: {planData.matrix_summary?.grade_A || 0}</span>
+                    <span className="grade-badge grade-B">B: {planData.matrix_summary?.grade_B || 0}</span>
+                    <span className="grade-badge grade-C">C: {planData.matrix_summary?.grade_C || 0}</span>
+                    <span className="grade-badge grade-D">D: {planData.matrix_summary?.grade_D || 0}</span>
+                    <span className="grade-badge grade-F">F: {planData.matrix_summary?.grade_F || 0}</span>
+                  </div>
+                  <p className="text-muted">{planData.matrix_summary?.total_pairs || 0} pairs analyzed from {planData.total_analyzed || 0} tracks</p>
+                </div>
+
+                {/* Group Cards */}
+                <div className="groups-grid">
+                  {(planData.groups || []).map(group => (
+                    <div key={group.group_id} className="group-card glass-card">
+                      <div className="group-header">
+                        <h4>{group.name}</h4>
+                        <span className={`compat-badge grade-${getGradeLetter(group.avg_compatibility)}`}>
+                          {group.avg_compatibility}%
+                        </span>
+                      </div>
+                      <div className="group-tracks">
+                        {(group.track_order || []).map(fn => (
+                          <div key={fn} className="group-track-item">
+                            <Music4 size={14} /> {fn}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="group-meta">
+                        <span><Clock size={14} /> ~{group.estimated_duration_minutes} min</span>
+                        <span><Zap size={14} /> {group.track_count} tracks</span>
+                      </div>
+                      {group.warnings && group.warnings.length > 0 && (
+                        <div className="group-warnings">
+                          {group.warnings.map((w, i) => (
+                            <span key={i} className="text-muted">⚠ {w}</span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="group-style-override">
+                        <label>Style:</label>
+                        <select
+                          value={groupStyles[group.group_id] || group.style}
+                          onChange={(e) => setGroupStyles(prev => ({
+                            ...prev, [group.group_id]: e.target.value
+                          }))}
+                        >
+                          <option value="energetic">Energetic</option>
+                          <option value="smooth">Smooth</option>
+                          <option value="showcase">Showcase</option>
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Excluded Tracks */}
+                {planData.excluded && planData.excluded.length > 0 && (
+                  <div className="excluded-panel glass-card">
+                    <h4>Excluded Tracks ({planData.excluded.length})</h4>
+                    {planData.excluded.map(ex => (
+                      <div key={ex.filename} className="excluded-item">
+                        <span>{ex.filename}</span>
+                        <span className="text-muted">{ex.reason} (best: {ex.best_score}%)</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="step-actions">
+                <button className="btn btn-secondary" onClick={() => setCurrentStep(1)}>
+                  Back
+                </button>
+                <motion.button
+                  className="btn btn-primary btn-lg"
+                  onClick={() => setCurrentStep(3)}
+                  disabled={!planData.groups || planData.groups.length === 0}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  Configure & Create <ChevronRight size={18} />
+                </motion.button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Step 3: Configure */}
+          {currentStep === 3 && (
             <motion.div
               key="step-2"
               className="step-content"
@@ -866,12 +1044,12 @@ export default function SandalwoodStudio() {
               </div>
 
               <div className="step-actions">
-                <button className="btn btn-secondary" onClick={() => setCurrentStep(1)}>
+                <button className="btn btn-secondary" onClick={() => setCurrentStep(2)}>
                   Back
                 </button>
                 <motion.button
                   className="btn btn-primary btn-lg create-btn"
-                  onClick={createMashup}
+                  onClick={planData ? createFromPlan : createMashup}
                   disabled={isCreating}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
@@ -880,6 +1058,11 @@ export default function SandalwoodStudio() {
                     <>
                       <RefreshCw size={18} className="spin" />
                       Creating... {progress}%
+                    </>
+                  ) : planData ? (
+                    <>
+                      <Sparkles size={18} />
+                      Create All Mixes ({planData.groups?.length || 0} groups)
                     </>
                   ) : (
                     <>
@@ -892,10 +1075,10 @@ export default function SandalwoodStudio() {
             </motion.div>
           )}
 
-          {/* Step 3: Results */}
-          {currentStep === 3 && result && (
+          {/* Step 4: Results */}
+          {currentStep === 4 && result && (
             <motion.div
-              key="step-3"
+              key="step-4"
               className="step-content"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -910,50 +1093,86 @@ export default function SandalwoodStudio() {
                   <div className="success-icon">
                     <Check size={48} />
                   </div>
-                  <h2>Mashup Created!</h2>
-                  <p>Your professional Sandalwood mashup is ready</p>
+                  <h2>{result.mashups ? `${result.total_created} Mashup${result.total_created !== 1 ? 's' : ''} Created!` : 'Mashup Created!'}</h2>
+                  <p>Your professional Sandalwood mashup{result.mashups ? 's are' : ' is'} ready</p>
                 </motion.div>
 
-                <div className="result-details">
-                  <div className="result-stat">
-                    <Music4 size={20} />
-                    <div>
-                      <span className="stat-label">Tracks</span>
-                      <span className="stat-value">{result.track_count || selectedTracks.length}</span>
-                    </div>
+                {/* Multiple mashup results (from Plan → Create flow) */}
+                {result.mashups ? (
+                  <div className="result-mashups-list">
+                    {result.mashups.map(mashup => (
+                      <div key={mashup.group_id} className="result-mashup-item glass-card">
+                        <div className="mashup-item-header">
+                          <h4>{mashup.group_name}</h4>
+                          <span className="badge badge-primary">{mashup.style}</span>
+                        </div>
+                        <p className="text-muted">{mashup.track_count} tracks</p>
+                        {mashup.output_filename ? (
+                          <motion.a
+                            href={`http://localhost:8000/api/stream/${mashup.output_filename}`}
+                            className="btn btn-primary"
+                            download
+                            whileHover={{ scale: 1.02 }}
+                          >
+                            <Download size={16} /> Download
+                          </motion.a>
+                        ) : (
+                          <span className="text-muted">Failed: {mashup.error}</span>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                  <div className="result-stat">
-                    <Clock size={20} />
-                    <div>
-                      <span className="stat-label">Style</span>
-                      <span className="stat-value">{result.style || selectedStyle}</span>
+                ) : (
+                  /* Single mashup result (legacy flow) */
+                  <>
+                    <div className="result-details">
+                      <div className="result-stat">
+                        <Music4 size={20} />
+                        <div>
+                          <span className="stat-label">Tracks</span>
+                          <span className="stat-value">{result.track_count || selectedTracks.length}</span>
+                        </div>
+                      </div>
+                      <div className="result-stat">
+                        <Clock size={20} />
+                        <div>
+                          <span className="stat-label">Style</span>
+                          <span className="stat-value">{result.style || selectedStyle}</span>
+                        </div>
+                      </div>
+                      <div className="result-stat">
+                        <AudioWaveform size={20} />
+                        <div>
+                          <span className="stat-label">Format</span>
+                          <span className="stat-value">320kbps MP3</span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <div className="result-stat">
-                    <AudioWaveform size={20} />
-                    <div>
-                      <span className="stat-label">Format</span>
-                      <span className="stat-value">320kbps MP3</span>
+
+                    <div className="result-actions">
+                      <motion.a
+                        href={`http://localhost:8000/api/stream/${result.output_filename}`}
+                        className="btn btn-primary btn-lg"
+                        download
+                        whileHover={{ scale: 1.02 }}
+                      >
+                        <Download size={18} />
+                        Download Mashup
+                      </motion.a>
                     </div>
-                  </div>
-                </div>
+                  </>
+                )}
 
                 <div className="result-actions">
-                  <motion.a
-                    href={`http://localhost:8000/api/stream/${result.output_filename}`}
-                    className="btn btn-primary btn-lg"
-                    download
-                    whileHover={{ scale: 1.02 }}
-                  >
-                    <Download size={18} />
-                    Download Mashup
-                  </motion.a>
                   <motion.button
                     className="btn btn-secondary"
                     onClick={() => {
                       setCurrentStep(0);
                       setSelectedTracks([]);
                       setResult(null);
+                      setPlanData(null);
+                      setPlanId(null);
+                      setGroupStyles({});
                     }}
                     whileHover={{ scale: 1.02 }}
                   >

@@ -59,6 +59,7 @@ from kannada_mashup_analyzer import (
     plan_kannada_mashup,
     generate_mashup_report,
     analyze_mashup_compatibility,
+    cluster_tracks_for_mashup,
 )
 from youtube_downloader import (
     download_from_youtube,
@@ -169,6 +170,12 @@ app.mount("/remix_outputs", StaticFiles(directory=OUTPUT_DIR), name="remix_outpu
 # }
 _tasks: dict[str, dict] = {}
 _tasks_lock = threading.Lock()
+
+# ---------------------------------------------------------------------------
+# In-memory mashup plan store (for Plan → Approve → Create flow)
+# ---------------------------------------------------------------------------
+_mashup_plans: dict[str, dict] = {}
+_plans_lock = threading.Lock()
 
 
 def _create_task() -> dict:
@@ -299,6 +306,12 @@ def _save_analysis_cache(cache: dict):
         json.dump(cache, f, indent=4, default=str)
 
 
+def _is_deep_analysis(entry: dict) -> bool:
+    """Check if cached analysis is the full 17-step Kannada deep analysis."""
+    deep_keys = {'tala', 'beat_grid', 'scale', 'section_classification'}
+    return deep_keys.issubset(entry.keys())
+
+
 # ---------------------------------------------------------------------------
 # Pydantic request models
 # ---------------------------------------------------------------------------
@@ -362,6 +375,33 @@ class SandalwoodMashupRequest(BaseModel):
         for f in v:
             if '..' in f or f.startswith('/'):
                 raise ValueError('Invalid filename')
+        return v
+
+
+class SandalwoodPlanRequest(BaseModel):
+    """Request for generating a clustering plan (Plan → Approve → Create flow)."""
+    filenames: list[str] = Field(..., min_length=2, max_length=50)
+    duration: int = Field(15, ge=1, le=60)
+
+    @field_validator('filenames')
+    @classmethod
+    def validate_filenames(cls, v):
+        for f in v:
+            if '..' in f or f.startswith('/'):
+                raise ValueError('Invalid filename')
+        return v
+
+
+class SandalwoodCreateRequest(BaseModel):
+    """Request to create mashups from an approved plan."""
+    plan_id: str = Field(..., min_length=1, max_length=100)
+    groups: list[dict] = Field(...)
+
+    @field_validator('plan_id')
+    @classmethod
+    def validate_plan_id(cls, v):
+        if '..' in v or '/' in v:
+            raise ValueError('Invalid plan_id')
         return v
 
 
@@ -559,7 +599,9 @@ async def list_songs(
         stat = os.stat(full_path)
 
         # Check if analysis cache exists for this file
-        has_cache = full_path in cache or entry in cache
+        cached_entry = cache.get(full_path) or cache.get(entry)
+        has_cache = cached_entry is not None
+        has_deep = has_cache and _is_deep_analysis(cached_entry)
 
         all_songs.append({
             "name": entry,
@@ -568,6 +610,7 @@ async def list_songs(
             "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
             "modified_ts": stat.st_mtime,
             "has_analysis": has_cache,
+            "has_deep_analysis": has_deep,
         })
 
     # Sort
@@ -928,9 +971,11 @@ async def mashup_sandalwood(req: SandalwoodMashupRequest):
         print("Using professional Sandalwood mixer with BPM sync, LUFS normalization, and beat alignment")
 
         try:
-            # Use the new professional Sandalwood mixer
+            # Filter to only the tracks selected by the planner (not all analyzed tracks)
+            planned_filenames = set(mashup_plan.get('track_order', []))
+            planned_tracks = [t for t in all_tracks if t['filename'] in planned_filenames]
             output_path = create_sandalwood_mashup(
-                tracks_analysis=all_tracks,
+                tracks_analysis=planned_tracks,
                 mashup_plan=mashup_plan,
                 output_dir=OUTPUT_DIR,
                 target_lufs=-14.0,  # YouTube standard
@@ -998,6 +1043,205 @@ async def mashup_sandalwood(req: SandalwoodMashupRequest):
         "filenames": req.filenames,
         "style": req.style,
         "duration": req.duration,
+    }
+
+
+# ------------------------------------------------------------------
+# Sandalwood Plan → Approve → Create (Intelligent Mixing Agent)
+# ------------------------------------------------------------------
+
+@app.post("/api/mashup/sandalwood/plan")
+async def mashup_sandalwood_plan(req: SandalwoodPlanRequest):
+    """Generate a clustering plan: analyze tracks, build compatibility matrix, cluster into groups."""
+    for fn in req.filenames:
+        fpath = os.path.join(SONGS_DIR, fn)
+        if not os.path.isfile(fpath):
+            raise HTTPException(status_code=404, detail=f"Song file not found: {fn}")
+
+    task = _create_task()
+
+    def _do_plan():
+        venv_path = os.environ.get("VIRTUAL_ENV", os.path.abspath("./venv"))
+        total = len(req.filenames)
+        print(f"Planning mashup groups for {total} tracks, target {req.duration} min/group")
+
+        # Load analysis cache — skip already-analyzed tracks
+        cache = _load_analysis_cache()
+        all_tracks = []
+        for idx, fn in enumerate(req.filenames):
+            fpath = os.path.join(SONGS_DIR, fn)
+            if fpath in cache and _is_deep_analysis(cache[fpath]):
+                print(f"[{idx + 1}/{total}] Deep cache hit: {fn}")
+                all_tracks.append(cache[fpath])
+            else:
+                reason = "not cached" if fpath not in cache else "only basic analysis"
+                print(f"[{idx + 1}/{total}] Deep analyzing ({reason}): {fn}")
+                analysis = analyze_kannada_track_for_mashup(fpath, venv_path)
+                all_tracks.append(analysis)
+                cache[fpath] = analysis
+            task["progress"] = int(((idx + 1) / total) * 70)
+
+        _save_analysis_cache(cache)
+
+        # Run clustering
+        print("Clustering tracks into compatible groups...")
+        task["progress"] = 75
+        cluster_result = cluster_tracks_for_mashup(all_tracks, default_duration=req.duration)
+        task["progress"] = 90
+
+        # Store plan for later retrieval by /create endpoint
+        plan_id = str(uuid.uuid4())
+        plan_data = {
+            'plan_id': plan_id,
+            'groups': cluster_result['groups'],
+            'excluded': cluster_result['excluded'],
+            'matrix_summary': cluster_result['matrix_summary'],
+            'all_tracks': all_tracks,
+            'created_at': datetime.utcnow().isoformat(),
+        }
+
+        with _plans_lock:
+            _mashup_plans[plan_id] = plan_data
+            # Cleanup plans older than 1 hour
+            from datetime import timedelta
+            cutoff = datetime.utcnow() - timedelta(hours=1)
+            expired = [
+                k for k, v in _mashup_plans.items()
+                if isinstance(v.get('created_at'), str)
+                and datetime.fromisoformat(v['created_at']) < cutoff
+            ]
+            for k in expired:
+                del _mashup_plans[k]
+
+        print(f"Plan generated: {len(cluster_result['groups'])} groups, "
+              f"{len(cluster_result['excluded'])} excluded")
+
+        # Return serializable plan (strip all_tracks to save bandwidth)
+        serializable_groups = []
+        for g in cluster_result['groups']:
+            serializable_groups.append({
+                'group_id': g['group_id'],
+                'name': g['name'],
+                'style': g['style'],
+                'track_order': g['track_order'],
+                'track_count': g['track_count'],
+                'avg_compatibility': g['avg_compatibility'],
+                'estimated_duration_minutes': g['estimated_duration_minutes'],
+                'timeline': g.get('timeline', []),
+                'warnings': g.get('warnings', []),
+                'best_pairs': g.get('best_pairs', []),
+            })
+
+        return {
+            'plan_id': plan_id,
+            'groups': serializable_groups,
+            'excluded': cluster_result['excluded'],
+            'matrix_summary': cluster_result['matrix_summary'],
+            'total_analyzed': len(all_tracks),
+        }
+
+    _run_in_background(task, _do_plan)
+    return {
+        "task_id": task["task_id"],
+        "status": "pending",
+        "filenames": req.filenames,
+        "duration": req.duration,
+    }
+
+
+@app.post("/api/mashup/sandalwood/create")
+async def mashup_sandalwood_create(req: SandalwoodCreateRequest):
+    """Create mashups from an approved plan. One mashup per group."""
+    with _plans_lock:
+        plan_data = _mashup_plans.get(req.plan_id)
+
+    if not plan_data:
+        raise HTTPException(status_code=404, detail="Plan not found. Generate a plan first.")
+
+    task = _create_task()
+
+    def _do_create():
+        all_tracks = plan_data['all_tracks']
+        tracks_by_name = {t['filename']: t for t in all_tracks}
+
+        # Map group_id → style override from request
+        style_overrides = {}
+        for g in req.groups:
+            gid = g.get('group_id')
+            if gid is not None:
+                style_overrides[gid] = g.get('style')
+
+        results = []
+        total_groups = len(req.groups)
+
+        for idx, requested_group in enumerate(req.groups):
+            gid = requested_group.get('group_id')
+            # Find this group in the stored plan
+            matching = [g for g in plan_data['groups'] if g['group_id'] == gid]
+            if not matching:
+                print(f"Warning: Group {gid} not found in plan, skipping")
+                continue
+
+            group = matching[0]
+            style = style_overrides.get(gid) or group['style']
+            track_order = group['track_order']
+
+            # Build tracks_analysis for this group only
+            group_tracks = [tracks_by_name[fn] for fn in track_order if fn in tracks_by_name]
+            if len(group_tracks) < 2:
+                print(f"Group {gid}: not enough tracks ({len(group_tracks)}), skipping")
+                results.append({
+                    'group_id': gid,
+                    'group_name': group['name'],
+                    'style': style,
+                    'output_filename': None,
+                    'error': 'Not enough tracks',
+                })
+                continue
+
+            # Get or rebuild the mashup plan for this group
+            mashup_plan = group.get('plan', {})
+            mashup_plan['style'] = style
+
+            print(f"\n[Group {gid}] Creating {style} mashup with {len(group_tracks)} tracks...")
+            try:
+                output_path = create_sandalwood_mashup(
+                    tracks_analysis=group_tracks,
+                    mashup_plan=mashup_plan,
+                    output_dir=OUTPUT_DIR,
+                    target_lufs=-14.0,
+                    export_quality='high'
+                )
+                results.append({
+                    'group_id': gid,
+                    'group_name': group['name'],
+                    'style': style,
+                    'output_filename': os.path.basename(output_path) if output_path else None,
+                    'track_count': len(group_tracks),
+                })
+            except Exception as e:
+                print(f"Group {gid} failed: {e}")
+                results.append({
+                    'group_id': gid,
+                    'group_name': group['name'],
+                    'style': style,
+                    'output_filename': None,
+                    'error': str(e),
+                })
+
+            task["progress"] = int(((idx + 1) / total_groups) * 100)
+
+        return {
+            'plan_id': req.plan_id,
+            'mashups': results,
+            'total_created': sum(1 for r in results if r.get('output_filename')),
+        }
+
+    _run_in_background(task, _do_create)
+    return {
+        "task_id": task["task_id"],
+        "status": "pending",
+        "plan_id": req.plan_id,
     }
 
 

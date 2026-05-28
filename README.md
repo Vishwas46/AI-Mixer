@@ -1,6 +1,6 @@
 # AI-Mixer
 
-![Version](https://img.shields.io/badge/version-2.4.0-blue.svg)
+![Version](https://img.shields.io/badge/version-2.5.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)
 
@@ -8,15 +8,60 @@
 
 ---
 
+## What's New in V2.5 - Intelligent Mixing Agent + Stem-Based DSP
+
+### Intelligent Plan → Approve → Create Workflow
+
+The Sandalwood Studio now features an **AI mixing agent** that automatically clusters tracks into compatible groups before mixing:
+
+| Feature | Description |
+|---------|-------------|
+| **Track Clustering** | Greedy partition algorithm builds NxN compatibility matrix, groups tracks by best-fit |
+| **Grade Distribution** | A-F grades (A≥80%, B≥65%, C≥50%, D≥35%, F<35%) for every track pair |
+| **Group Review UI** | Visual group cards with compatibility badges, track lists, and style overrides |
+| **Excluded Tracks** | Tracks with best compatibility <35% shown separately with reasons |
+| **Multi-Mashup Generation** | One plan produces multiple mashups (one per group) in a single run |
+| **5-Step Wizard** | Select → Analyze → **Review Plan** → Configure → Results |
+
+### Stem-Based Mixing Engine
+
+| Feature | Description |
+|---------|-------------|
+| **Demucs Stem Separation** | Splits tracks into vocals, drums, bass, other for independent processing |
+| **Dual-Bus Timeline** | Instrumental + vocal busses mixed independently for cleaner results |
+| **Formant-Preserving Pitch Shift** | pyrubberband `-F` flag keeps vocal character natural during key changes |
+| **Shruti/Microtonal Tuning** | `librosa.estimate_tuning()` detects cents drift from A440 in vintage recordings |
+| **Dynamic Sidechain Ducking** | RMS envelope → Gaussian smoothing → gain curve ducks instrumental under vocals |
+| **Pedalboard Mastering Chain** | HPF 30Hz → Compressor → PeakLimiter via Spotify's Pedalboard library |
+
+### Stem-Aware Transition Types
+
+All 4 transition types now operate on separated stems for cleaner mixing:
+
+| Type | Instrumental Bus | Vocal Bus | Duration |
+|------|------------------|-----------|----------|
+| `crossfade` | Equal-power sqrt curves | Equal-power sqrt curves | Tala-aware |
+| `bass_swap` | Butterworth HPF on outgoing | sqrt crossfade | 8 bars (same tala) |
+| `filter_sweep` | Progressive Butterworth LPF | sqrt crossfade | 4 bars (different tala) |
+| `echo_out` | Multi-tap delay tail | Pedalboard delay tail | Tala-aware |
+
+Transition type auto-selected based on energy differential, vocal overlap, and style.
+
+### Deep Analysis Cache Validation
+
+The plan endpoint now validates that cached analysis is the full 17-step deep analysis (not just basic 7-key). Tracks with only basic analysis are automatically re-analyzed before clustering.
+
+---
+
 ## What's New in V2.4 - Sandalwood Studio UI
 
-A dedicated **professional UI** for creating Kannada/Sandalwood mashups with a 4-step wizard:
+A dedicated **professional UI** for creating Kannada/Sandalwood mashups with a 5-step wizard:
 
 ### Sandalwood Studio Features
 
 | Feature | Description |
 |---------|-------------|
-| **4-Step Wizard** | Guided workflow: Select → Analyze → Configure → Create |
+| **5-Step Wizard** | Guided workflow: Select → Analyze → Review Plan → Configure → Create |
 | **Singer Detection Cards** | Visual cards showing detected artist with confidence bars |
 | **Era Timeline** | Interactive decade visualization (1960s-2020s) |
 | **Track Cards** | Drag-to-select with analysis badges (BPM, key, mood) |
@@ -390,6 +435,8 @@ The backend exposes a REST API at `http://localhost:8000`:
 | `/api/mashup/single` | POST | Create 2-song mashup (async) |
 | `/api/mashup/djset` | POST | Create continuous DJ mix (async) |
 | `/api/mashup/sandalwood` | POST | Create Kannada mashup + report (async) |
+| `/api/mashup/sandalwood/plan` | POST | Analyze + cluster tracks → returns plan with groups (async) |
+| `/api/mashup/sandalwood/create` | POST | Create mashups from approved plan with style overrides (async) |
 | `/api/mashup/pallavi-medley` | POST | Create Pallavi-to-Pallavi medley (async) |
 | `/api/mashup/batch` | POST | Create multiple mashups (async) |
 
@@ -435,8 +482,8 @@ The backend exposes a REST API at `http://localhost:8000`:
 AI-Mixer/
 ├── Backend (Python/FastAPI)
 │   ├── web_server.py              # FastAPI backend (30+ endpoints)
-│   ├── kannada_mashup_analyzer.py # Indian music analyzer (2400+ lines)
-│   ├── sandalwood_mixer.py        # Professional mixer (BPM sync, LUFS)
+│   ├── kannada_mashup_analyzer.py # Indian music analyzer + track clustering (2970+ lines)
+│   ├── sandalwood_mixer.py        # Stem-based mixer (Demucs, Pedalboard mastering)
 │   ├── sandalwood_enhancements.py # Singer/Era detection, validation
 │   ├── audio_analyzer.py          # Core audio analysis
 │   ├── creative_remix.py          # Mashup creation modes
@@ -512,9 +559,11 @@ Uses 4-method weighted scoring for robust detection:
 - Python 3.8+
 - FastAPI (REST API with async tasks)
 - librosa (audio analysis)
-- Demucs (source separation)
-- pyrubberband (time-stretch/pitch-shift)
+- Demucs (source separation — stem-based mixing)
+- pyrubberband (time-stretch/pitch-shift with formant preservation)
 - pyloudnorm (LUFS normalization)
+- pedalboard (Spotify's audio plugin host — mastering chain)
+- scipy (Butterworth filter design for transitions)
 - pydub (audio manipulation)
 - yt-dlp (YouTube downloads)
 
@@ -540,8 +589,20 @@ Uses 4-method weighted scoring for robust detection:
 - [x] Audio + report generation
 - [x] Live progress with SSE
 
+### V2.5 Features
+- [x] Stem-based mixing with Demucs dual-bus timeline
+- [x] Formant-preserving pitch shift (pyrubberband -F)
+- [x] Shruti/microtonal tuning detection
+- [x] Dynamic sidechain ducking (vocal-instrumental)
+- [x] Pedalboard mastering chain (HPF + Compressor + Limiter)
+- [x] Intelligent track clustering (greedy partition algorithm)
+- [x] Plan → Approve → Create workflow with 2 new API endpoints
+- [x] 5-step wizard with plan review UI (group cards, grade badges)
+- [x] Multiple mashup generation per plan
+- [x] Deep analysis cache validation (basic vs deep)
+
 ### V2.4 Features
-- [x] Sandalwood Studio UI with 4-step wizard
+- [x] Sandalwood Studio UI with 5-step wizard
 - [x] Singer detection cards with confidence visualization
 - [x] Era timeline with decade visualization
 - [x] Cue point editor with waveform markers
@@ -597,10 +658,11 @@ Uses 4-method weighted scoring for robust detection:
 - [ ] Authentication and rate limiting for production
 - [ ] Binary Serato crate format support
 - [ ] Real-time waveform mixing in browser
+- [ ] Real-time stem preview in browser
 - [ ] Composer-aware sequencing (group Hamsalekha songs together)
 - [ ] Multi-language support (Hindi, Telugu, Tamil mashups)
 - [ ] Machine learning singer identification improvement
-- [ ] Stem separation before mixing for cleaner results
+- [x] ~~Stem separation before mixing for cleaner results~~ (V2.5)
 
 ---
 
@@ -622,6 +684,22 @@ curl -X POST http://localhost:8000/api/mashup/sandalwood \
     "style": "energetic",
     "duration": 10
   }'
+```
+
+### Plan → Create Mashup (Intelligent Agent)
+```bash
+# Step 1: Generate mashup plan (clusters tracks into compatible groups)
+curl -X POST http://localhost:8000/api/mashup/sandalwood/plan \
+  -H "Content-Type: application/json" \
+  -d '{"filenames": ["song1.mp3", "song2.mp3", "song3.mp3", "song4.mp3", "song5.mp3"], "duration": 15}'
+
+# Step 2: Poll task for plan_id
+curl http://localhost:8000/api/tasks/{TASK_ID}
+
+# Step 3: Create mashups from approved plan (with optional style overrides)
+curl -X POST http://localhost:8000/api/mashup/sandalwood/create \
+  -H "Content-Type: application/json" \
+  -d '{"plan_id": "PLAN_ID", "groups": [{"group_id": 1, "style": "smooth"}]}'
 ```
 
 ### Detect Singer & Get EQ

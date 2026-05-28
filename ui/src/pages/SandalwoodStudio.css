@@ -1035,6 +1035,198 @@
 }
 
 /* ============================================
+   PLAN REVIEW
+   ============================================ */
+
+.plan-review {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.matrix-summary {
+  padding: var(--space-lg);
+  text-align: center;
+}
+
+.matrix-summary h3 {
+  font-size: 1.125rem;
+  margin-bottom: var(--space-md);
+}
+
+.matrix-stats {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-sm);
+}
+
+.grade-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.grade-badge.grade-A, .compat-badge.grade-A { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+.grade-badge.grade-B, .compat-badge.grade-B { background: rgba(59, 130, 246, 0.2); color: #3b82f6; }
+.grade-badge.grade-C, .compat-badge.grade-C { background: rgba(234, 179, 8, 0.2); color: #eab308; }
+.grade-badge.grade-D, .compat-badge.grade-D { background: rgba(249, 115, 22, 0.2); color: #f97316; }
+.grade-badge.grade-F, .compat-badge.grade-F { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+
+/* Group Cards */
+.groups-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-lg);
+}
+
+.group-card {
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.group-header h4 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.compat-badge {
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.group-tracks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.group-track-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.group-meta {
+  display: flex;
+  gap: var(--space-md);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.group-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.group-warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.75rem;
+}
+
+.group-style-override {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--glass-border);
+}
+
+.group-style-override label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.group-style-override select {
+  flex: 1;
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+}
+
+/* Excluded Panel */
+.excluded-panel {
+  padding: var(--space-lg);
+}
+
+.excluded-panel h4 {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-md);
+}
+
+.excluded-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-xs);
+  font-size: 0.8rem;
+}
+
+/* Result mashup items (multiple outputs) */
+.result-mashups-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-md);
+  margin: var(--space-lg) 0;
+}
+
+.result-mashup-item {
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  align-items: center;
+  text-align: center;
+}
+
+.mashup-item-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.mashup-item-header h4 {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.result-mashup-item p {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+/* ============================================
    UTILITIES
    ============================================ */
 
