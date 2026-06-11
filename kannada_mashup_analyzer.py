@@ -114,6 +114,7 @@ def detect_beat_grid(y, sr):
 
     # Get tempo and beat frames
     tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr, units='frames')
+    tempo = float(np.atleast_1d(tempo)[0])  # librosa >=0.10 returns a 1-element array
     beat_times = librosa.frames_to_time(beat_frames, sr=sr)
 
     # Calculate beat interval consistency (for tempo stability)
@@ -874,6 +875,7 @@ def detect_tala(y, sr, estimated_bpm, beat_grid=None):
     # Get onset envelope and beats
     onset_env = librosa.onset.onset_strength(y=y, sr=sr)
     tempo, beats = librosa.beat.beat_track(y=y, sr=sr, onset_envelope=onset_env)
+    tempo = float(np.atleast_1d(tempo)[0])  # librosa >=0.10 returns a 1-element array
     beat_times = librosa.frames_to_time(beats, sr=sr)
 
     if len(beats) < 16:
@@ -1547,6 +1549,7 @@ def analyze_percussion_patterns(y, sr):
 
     # Analyze accent pattern by looking at onset strength periodicity
     tempo, beats = librosa.beat.beat_track(y=y, sr=sr)
+    tempo = float(np.atleast_1d(tempo)[0])  # librosa >=0.10 returns a 1-element array
 
     # Calculate onset strength at beat positions
     beat_onset_strengths = []
@@ -2326,7 +2329,7 @@ def plan_kannada_mashup(all_tracks_analysis, target_duration_minutes=10, style='
             'play_until': f"{item['clip_end']:.1f}s",
         }
         if i < len(timeline) - 1:
-            instruction['transition'] = f"{item['transition_type']} over {item['transition_bars']} bars into {timeline[i+1]['track']}"
+            instruction['transition'] = f"{item['transition_to_next']} over {item['transition_bars']} bars into {timeline[i+1]['track']}"
         else:
             instruction['transition'] = 'Fade out to end mashup'
         mixing_instructions.append(instruction)

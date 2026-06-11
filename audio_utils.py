@@ -75,6 +75,6 @@ def export_audio(y, sr, output_dir, base_name, export_quality="high"):
         return output_path
 
     output_path = os.path.join(output_dir, f"{base_name}.wav")
-    sf.write(output_path, y, sr)
+    sf.write(output_path, np.clip(y, -1.0, 1.0), sr)
     print(f"  [Export] ffmpeg not found — wrote WAV instead of MP3: {base_name}.wav")
     return output_path

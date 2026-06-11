@@ -176,13 +176,18 @@ def apply_master_bus_glue(y, sr, target_lufs=-14.0):
             Limiter(threshold_db=-0.3, release_ms=100.0)
         ])
         y_2d = np.expand_dims(y, axis=0)
-        processed = board(y_2d, sr, reset=True)
-        return processed[0]
+        y = board(y_2d, sr, reset=True)[0]
     else:
         peak = np.max(np.abs(y))
         if peak > 0:
-            return y * (0.95 / peak)
-        return y
+            y = y * (0.95 / peak)
+
+    # True-peak safety: limiter release tails can overshoot slightly, and
+    # 16-bit export would hard-clip anything above full scale
+    peak = np.max(np.abs(y)) if len(y) else 0.0
+    if peak > 0.985:
+        y = y * (0.985 / peak)
+    return y
 
 def get_key_semitone_diff(key1_idx, mode1, key2_idx, mode2):
     diff = (key2_idx - key1_idx) % 12
