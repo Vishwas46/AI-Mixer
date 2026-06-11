@@ -270,7 +270,7 @@ def calculate_transition_duration(track1_analysis, track2_analysis, target_bpm):
 
 def get_pallavi_time(track_analysis):
     """Get the start time of the first Pallavi section."""
-    section_class = track_analysis.get('section_classification', {})
+    section_class = track_analysis.get('sections', {})
     pallavis = section_class.get('pallavis', [])
     if pallavis:
         return pallavis[0].get('start', None)

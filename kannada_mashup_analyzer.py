@@ -1988,9 +1988,9 @@ def calculate_kannada_mashup_compatibility(track1, track2):
 
     # 10. Pallavi Mashup Potential (0-30 points) - NEW for Kannada
     pallavi_score = 0
-    if 'section_classification' in track1 and 'section_classification' in track2:
-        pallavis1 = track1['section_classification'].get('pallavis', [])
-        pallavis2 = track2['section_classification'].get('pallavis', [])
+    if 'sections' in track1 and 'sections' in track2:
+        pallavis1 = track1['sections'].get('pallavis', [])
+        pallavis2 = track2['sections'].get('pallavis', [])
 
         if pallavis1 and pallavis2:
             # Both have strong Pallavi sections - great for mashup
@@ -2111,7 +2111,7 @@ def plan_kannada_mashup(all_tracks_analysis, target_duration_minutes=10, style='
         # Order by hook score AND Pallavi sections
         sorted_tracks = sorted(all_tracks_analysis,
                               key=lambda x: (
-                                  len(x.get('section_classification', {}).get('pallavis', [])),  # Primary: Pallavi count
+                                  len(x.get('sections', {}).get('pallavis', [])),  # Primary: Pallavi count
                                   x.get('hooks_and_drops', {}).get('hooks', [{}])[0].get('hook_score', 0) if x.get('hooks_and_drops', {}).get('hooks') else 0
                               ),
                               reverse=True)
@@ -2168,7 +2168,7 @@ def plan_kannada_mashup(all_tracks_analysis, target_duration_minutes=10, style='
                     hook_bonus = 0
                     if candidate.get('hooks_and_drops', {}).get('primary_hook'):
                         hook_bonus += 10
-                    if candidate.get('section_classification', {}).get('pallavis'):
+                    if candidate.get('sections', {}).get('pallavis'):
                         hook_bonus += 15
                     score = base_score + hook_bonus
 
@@ -2278,7 +2278,7 @@ def plan_kannada_mashup(all_tracks_analysis, target_duration_minutes=10, style='
         track_tala_name = track.get('tala', {}).get('tala_name', 'unknown')
         track_scale = track.get('scale', {}).get('scale_name', 'unknown')
         track_style = track.get('anand_audio_patterns', {}).get('song_style', 'unknown')
-        pallavi_count = len(track.get('section_classification', {}).get('pallavis', []))
+        pallavi_count = len(track.get('sections', {}).get('pallavis', []))
 
         notes = f"Tala: {track_tala_name}, Scale: {track_scale}, Style: {track_style}"
         if pallavi_count > 0:
@@ -2524,7 +2524,7 @@ def cluster_tracks_for_mashup(all_tracks_analysis, default_duration=15):
         energy_variance = sum((e - mean_energy) ** 2 for e in energies) / len(energies)
 
         pallavi_count = sum(
-            len(t.get('section_classification', {}).get('pallavis', []))
+            len(t.get('sections', {}).get('pallavis', []))
             for t in selected_tracks
         )
         pallavi_ratio = pallavi_count / len(selected_tracks)

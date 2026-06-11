@@ -308,7 +308,7 @@ def _save_analysis_cache(cache: dict):
 
 def _is_deep_analysis(entry: dict) -> bool:
     """Check if cached analysis is the full 17-step Kannada deep analysis."""
-    deep_keys = {'tala', 'beat_grid', 'scale', 'section_classification'}
+    deep_keys = {'tala', 'beat_grid', 'scale', 'sections'}
     return deep_keys.issubset(entry.keys())
 
 
