@@ -196,6 +196,7 @@ AI-Mixer/
 ├── sandalwood_enhancements.py  # Singer/era detection, validation, previews
 ├── audio_analyzer.py           # Base analysis + Demucs vocal regions
 ├── creative_remix.py           # Legacy quick-mashup / DJ-set modes (Advanced)
+├── remix_engine.py             # Stem overlay engine used by the quick mashup
 ├── audio_utils.py              # Shared audio IO + export (MP3/WAV fallback)
 ├── youtube_downloader.py       # yt-dlp integration
 ├── rekordbox_exporter.py       # DJ software export
@@ -236,7 +237,7 @@ the UI) and run a Divine mashup — listen for the voice entering on the beat.
 
 | Version | Highlights |
 |---------|-----------|
-| **3.0** | Sandalwood-first MVP: Mashup Lab engine + UI (3 style presets), RoFormer quality tier, central UI API client, Advanced page for legacy modes, README as single source of truth, synthetic-audio test suite, bug fixes (section-key mismatch, task-creation TypeErrors, pedalboard limiter import, upload dependency) |
+| **3.0** | Sandalwood-first MVP: Mashup Lab engine + UI (3 style presets), RoFormer quality tier, central UI API client, Advanced page for legacy modes, README as single source of truth, synthetic-audio test suite, and 10 bug fixes (librosa 0.10+ tempo arrays, multi-track planner crash, section-key mismatch, task-creation TypeErrors, mastering-chain limiter import, `/api/analysis/all` route shadowing, UI/API field mismatches, upload dependency, true-peak guard) |
 | 2.5 | Plan → Approve → Create clustering agent, stem-based dual-bus mixing |
 | 2.4 | Sandalwood Studio wizard UI |
 | 2.3 | Singer/era detection, validation, previews, cue points |
