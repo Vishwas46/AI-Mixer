@@ -5,7 +5,9 @@
 # -----------------------------------------------------------------------------
 # audio_utils.py
 import os
+import shutil
 import subprocess
+import tempfile
 import numpy as np
 import soundfile as sf
 import librosa
@@ -38,3 +40,41 @@ def write_wav(path, y, sr):
 def db_to_gain(db):
     """Converts decibels to linear gain."""
     return 10.0 ** (db / 20.0)
+
+def has_ffmpeg():
+    """True when the ffmpeg binary (needed for MP3 export) is on PATH."""
+    return shutil.which("ffmpeg") is not None
+
+def export_audio(y, sr, output_dir, base_name, export_quality="high"):
+    """Export mono float audio as MP3 when ffmpeg is available, else WAV.
+
+    Args:
+        y: mono float32/float64 numpy array in [-1, 1]
+        sr: sample rate
+        output_dir: destination directory (created if missing)
+        base_name: filename without extension
+        export_quality: 'high' (320k) or 'standard' (256k) MP3 bitrate
+
+    Returns:
+        str: path of the file actually written (.mp3 or .wav)
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    y = np.asarray(y, dtype=np.float32)
+
+    if has_ffmpeg():
+        from pydub import AudioSegment
+        bitrate = "320k" if export_quality == "high" else "256k"
+        output_path = os.path.join(output_dir, f"{base_name}.mp3")
+        tmp_wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        try:
+            sf.write(tmp_wav.name, y, sr)
+            AudioSegment.from_wav(tmp_wav.name).export(
+                output_path, format="mp3", bitrate=bitrate)
+        finally:
+            os.unlink(tmp_wav.name)
+        return output_path
+
+    output_path = os.path.join(output_dir, f"{base_name}.wav")
+    sf.write(output_path, y, sr)
+    print(f"  [Export] ffmpeg not found — wrote WAV instead of MP3: {base_name}.wav")
+    return output_path

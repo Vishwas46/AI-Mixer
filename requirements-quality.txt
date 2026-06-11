@@ -1,0 +1,11 @@
+# Optional best-quality separation tier for Sandalwood AI Mixer.
+#
+# Installs the audio-separator package (BS/Mel-RoFormer family — today's best
+# open-source vocal isolation). On first use it downloads model weights
+# (~600MB, one time) from Hugging Face.
+#
+#   pip install -r requirements-quality.txt
+#   export AIMIXER_STEM_QUALITY=best   # or leave "auto" (default)
+#
+# GPU owners: install audio-separator[gpu] instead for a large speedup.
+audio-separator[cpu]>=0.24

@@ -13,16 +13,15 @@
 # -----------------------------------------------------------------------------
 
 import os
-import tempfile
 import numpy as np
 import librosa
-import soundfile as sf
 import pyrubberband as pyrb
 import scipy.signal
 import scipy.ndimage
 import subprocess
 from datetime import datetime
-from pydub import AudioSegment
+
+from audio_utils import export_audio
 
 # Try to import Pedalboard for Studio-Grade Mastering
 try:
@@ -85,7 +84,12 @@ def time_stretch_audio(y, sr, source_bpm, target_bpm):
     try:
         return pyrb.time_stretch(y, sr, ratio, rbargs={'-c': '3'})
     except Exception:
-        return pyrb.time_stretch(y, sr, ratio)
+        try:
+            return pyrb.time_stretch(y, sr, ratio)
+        except Exception:
+            # rubberband binary missing — librosa phase-vocoder fallback
+            print("  [DSP] rubberband unavailable, using librosa time-stretch fallback")
+            return librosa.effects.time_stretch(y=y, rate=ratio)
 
 def pitch_shift_pro(y, sr, semitones, cents_offset=0, is_vocal=False):
     """
@@ -100,7 +104,12 @@ def pitch_shift_pro(y, sr, semitones, cents_offset=0, is_vocal=False):
     try:
         return pyrb.pitch_shift(y, sr, total_shift, rbargs=rbargs)
     except Exception:
-        return pyrb.pitch_shift(y, sr, total_shift)
+        try:
+            return pyrb.pitch_shift(y, sr, total_shift)
+        except Exception:
+            # rubberband binary missing — librosa fallback (no formant preservation)
+            print("  [DSP] rubberband unavailable, using librosa pitch-shift fallback")
+            return librosa.effects.pitch_shift(y=y, sr=sr, n_steps=total_shift)
 
 def dynamic_sidechain_ducking(instrumental, vocal, sr, max_reduction_db=-4.0):
     """
@@ -603,22 +612,11 @@ def create_sandalwood_mashup(tracks_analysis, mashup_plan, output_dir, target_lu
     # -------------------------------------------------------------------------
     # PHASE 5: Export
     # -------------------------------------------------------------------------
-    os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    output_filename = f"sandalwood_pro_mix_{style}_{timestamp}.mp3"
-    output_path = os.path.join(output_dir, output_filename)
-    bitrate = "320k" if export_quality == 'high' else "256k"
+    base_name = f"sandalwood_pro_mix_{style}_{timestamp}"
+    print(f"Exporting: {base_name} ({len(final_audio)/sr:.1f}s)")
+    output_path = export_audio(final_audio, sr, output_dir, base_name, export_quality)
 
-    print(f"Exporting: {output_filename} ({len(final_audio)/sr:.1f}s, {bitrate})")
-    tmp_wav = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
-    try:
-        sf.write(tmp_wav.name, final_audio, sr)
-        audio_segment = AudioSegment.from_wav(tmp_wav.name)
-        audio_segment.export(output_path, format="mp3", bitrate=bitrate)
-    finally:
-        os.unlink(tmp_wav.name)
-        
     # Stem cache preserved at stem_cache_dir for faster re-renders
     print("✅ Professional Mashup Creation Successful!")
     return output_path
@@ -703,20 +701,11 @@ def create_pallavi_medley(tracks_analysis, output_dir, target_lufs=-14.0):
     final_audio = apply_master_bus_glue(final_audio, sr, target_lufs)
 
     # Export
-    os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_filename = f"pallavi_medley_{timestamp}.mp3"
-    output_path = os.path.join(output_dir, output_filename)
+    base_name = f"pallavi_medley_{timestamp}"
+    output_path = export_audio(final_audio, sr, output_dir, base_name, "high")
 
-    tmp_wav = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
-    try:
-        sf.write(tmp_wav.name, final_audio, sr)
-        audio_segment = AudioSegment.from_wav(tmp_wav.name)
-        audio_segment.export(output_path, format="mp3", bitrate="320k")
-    finally:
-        os.unlink(tmp_wav.name)
-
-    print(f"✅ Pallavi Medley created: {output_filename} ({len(final_audio)/sr:.1f}s)")
+    print(f"✅ Pallavi Medley created: {os.path.basename(output_path)} ({len(final_audio)/sr:.1f}s)")
     return output_path
 
 
