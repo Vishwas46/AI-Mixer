@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion as Motion, AnimatePresence } from 'framer-motion'
 import { Headphones, Download, Trash2, RefreshCw, Clock, FileAudio } from 'lucide-react'
 import AudioPlayer from '../components/AudioPlayer'
+import { apiFetch, apiUrl } from '../api'
 import './Results.css'
 
 function Results() {
@@ -12,9 +13,13 @@ function Results() {
   const fetchOutputs = async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/outputs')
-      const data = await res.json()
-      setOutputs(data.outputs || [])
+      const data = await apiFetch('/api/outputs')
+      // Keep only audio (the folder also holds .txt mix reports) and map
+      // the API's name/modified/size_bytes fields to what this page renders
+      const audio = (data.outputs || [])
+        .filter(o => /\.(mp3|wav|flac|m4a|ogg)$/i.test(o.name))
+        .map(o => ({ ...o, filename: o.name, created_at: o.modified, size: o.size_bytes }))
+      setOutputs(audio)
     } catch (err) {
       console.error('Failed to fetch outputs:', err)
     } finally {
@@ -49,7 +54,7 @@ function Results() {
 
   const downloadFile = (filename) => {
     const link = document.createElement('a')
-    link.href = `/remix_outputs/${filename}`
+    link.href = apiUrl(`/api/stream/${filename}`)
     link.download = filename
     document.body.appendChild(link)
     link.click()
@@ -75,16 +80,16 @@ function Results() {
 
       {/* Audio Player Area */}
       {selectedOutput && (
-        <motion.div
+        <Motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           className="player-area"
         >
           <AudioPlayer
-            src={`/remix_outputs/${selectedOutput.filename}`}
+            src={apiUrl(`/api/stream/${selectedOutput.filename}`)}
             title={selectedOutput.filename}
           />
-        </motion.div>
+        </Motion.div>
       )}
 
       {/* Outputs List */}
@@ -97,13 +102,13 @@ function Results() {
         <div className="empty-state glass-card">
           <Headphones size={48} className="empty-icon" />
           <h3>No mixes yet</h3>
-          <p>Go to Studio and create your first mashup</p>
+          <p>Create your first mashup in the Sandalwood studio</p>
         </div>
       ) : (
         <div className="outputs-grid">
           <AnimatePresence>
             {outputs.map((output, index) => (
-              <motion.div
+              <Motion.div
                 key={output.filename}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -141,7 +146,7 @@ function Results() {
                     <Download size={18} />
                   </button>
                 </div>
-              </motion.div>
+              </Motion.div>
             ))}
           </AnimatePresence>
         </div>

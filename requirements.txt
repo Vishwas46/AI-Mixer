@@ -1,13 +1,12 @@
-spotipy
-python-dotenv
 numpy
-soundfile
+soundfile>=0.11
 librosa
 pyrubberband
 pydub
 demucs
 fastapi
 uvicorn
+python-multipart
 pydantic
 yt-dlp
 pyloudnorm

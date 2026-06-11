@@ -52,6 +52,7 @@ def analyze_audio_local(file_path):
 
     # 1. Estimate BPM (Tempo)
     tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+    tempo = float(np.atleast_1d(tempo)[0])  # librosa >=0.10 returns a 1-element array
 
     # 2. Estimate Key
     chroma = librosa.feature.chroma_stft(y=y, sr=sr)

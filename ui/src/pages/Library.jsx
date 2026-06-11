@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion as Motion, AnimatePresence } from 'framer-motion'
 import { Upload, Music, Clock, Key, Activity, RefreshCw, Search, X, ChevronDown, ChevronUp } from 'lucide-react'
 import TaskProgress from '../components/TaskProgress'
+import { apiFetch } from '../api'
 import './Library.css'
 
 function Library() {
@@ -15,9 +16,18 @@ function Library() {
 
   const fetchSongs = async () => {
     try {
-      const res = await fetch('/api/songs')
-      const data = await res.json()
-      setSongs(data.songs || [])
+      // /api/songs lists files (name, has_analysis); analysis details live
+      // in the cache exposed by /api/analysis/all — merge the two here
+      const [songsData, analysisData] = await Promise.all([
+        apiFetch('/api/songs'),
+        apiFetch('/api/analysis/all'),
+      ])
+      const analyses = analysisData.analyses || {}
+      setSongs((songsData.songs || []).map(s => ({
+        ...s,
+        filename: s.name,
+        analysis: analyses[s.name] || null,
+      })))
     } catch (err) {
       console.error('Failed to fetch songs:', err)
     } finally {
@@ -38,13 +48,11 @@ function Library() {
     formData.append('file', file)
 
     try {
-      const res = await fetch('/api/songs/upload', {
+      await apiFetch('/api/songs/upload', {
         method: 'POST',
         body: formData,
       })
-      if (res.ok) {
-        fetchSongs()
-      }
+      fetchSongs()
     } catch (err) {
       console.error('Upload failed:', err)
     } finally {
@@ -57,12 +65,10 @@ function Library() {
 
   const analyzeKannada = async (filename) => {
     try {
-      const res = await fetch('/api/analyze/kannada', {
+      const data = await apiFetch('/api/analyze/kannada', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename }),
       })
-      const data = await res.json()
       setAnalyzingId(data.task_id)
     } catch (err) {
       console.error('Analysis failed:', err)
@@ -157,7 +163,7 @@ function Library() {
         <div className="songs-list">
           <AnimatePresence>
             {filteredSongs.map((song, index) => (
-              <motion.div
+              <Motion.div
                 key={song.filename}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -220,7 +226,7 @@ function Library() {
 
                 <AnimatePresence>
                   {expandedSong === song.filename && song.analysis && (
-                    <motion.div
+                    <Motion.div
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
@@ -298,10 +304,10 @@ function Library() {
                           </div>
                         </div>
                       )}
-                    </motion.div>
+                    </Motion.div>
                   )}
                 </AnimatePresence>
-              </motion.div>
+              </Motion.div>
             ))}
           </AnimatePresence>
         </div>

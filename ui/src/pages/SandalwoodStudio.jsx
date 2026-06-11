@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion as Motion, AnimatePresence } from 'framer-motion';
 import {
   Music4, Upload, Sparkles, Play, SkipForward,
   Wand2, Settings2, ChevronRight, Check,
@@ -7,6 +7,7 @@ import {
   Clock, Zap, Heart, Star, TrendingUp,
   Disc3, Radio, Headphones, AudioWaveform
 } from 'lucide-react';
+import { apiUrl } from '../api';
 import './SandalwoodStudio.css';
 
 // Animation variants
@@ -51,7 +52,7 @@ const StepIndicator = ({ steps, currentStep }) => (
   <div className="step-indicator">
     {steps.map((step, index) => (
       <div key={index} className="step-item">
-        <motion.div
+        <Motion.div
           className={`step-circle ${index < currentStep ? 'completed' : ''} ${index === currentStep ? 'active' : ''}`}
           animate={{
             scale: index === currentStep ? 1.1 : 1,
@@ -59,7 +60,7 @@ const StepIndicator = ({ steps, currentStep }) => (
           }}
         >
           {index < currentStep ? <Check size={14} /> : index + 1}
-        </motion.div>
+        </Motion.div>
         <span className="step-label">{step}</span>
         {index < steps.length - 1 && (
           <div className={`step-line ${index < currentStep ? 'completed' : ''}`} />
@@ -74,7 +75,7 @@ const SingerCard = ({ singer, isDetected, confidence, onSelect }) => {
   const colors = SINGER_COLORS[singer.id] || SINGER_COLORS['unknown'];
 
   return (
-    <motion.div
+    <Motion.div
       className={`singer-card ${isDetected ? 'detected' : ''}`}
       variants={cardVariants}
       whileHover="hover"
@@ -90,25 +91,25 @@ const SingerCard = ({ singer, isDetected, confidence, onSelect }) => {
         <h4>{singer.name}</h4>
         <span className="singer-era">{singer.era}</span>
         {isDetected && (
-          <motion.div
+          <Motion.div
             className="confidence-badge"
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
           >
             {Math.round(confidence * 100)}% match
-          </motion.div>
+          </Motion.div>
         )}
       </div>
       {isDetected && (
-        <motion.div
+        <Motion.div
           className="detected-indicator"
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
         >
           <Sparkles size={16} />
-        </motion.div>
+        </Motion.div>
       )}
-    </motion.div>
+    </Motion.div>
   );
 };
 
@@ -116,7 +117,7 @@ const SingerCard = ({ singer, isDetected, confidence, onSelect }) => {
 const EraTimeline = ({ eras, detectedEra }) => (
   <div className="era-timeline">
     {eras.map((era, index) => (
-      <motion.div
+      <Motion.div
         key={era.id}
         className={`era-item ${detectedEra?.id === era.id ? 'detected' : ''}`}
         initial={{ opacity: 0, x: -20 }}
@@ -132,23 +133,23 @@ const EraTimeline = ({ eras, detectedEra }) => (
           <h5>{era.name}</h5>
           <span className="era-style">{era.style}</span>
           {detectedEra?.id === era.id && (
-            <motion.span
+            <Motion.span
               className="era-detected-badge"
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
             >
               Detected
-            </motion.span>
+            </Motion.span>
           )}
         </div>
-      </motion.div>
+      </Motion.div>
     ))}
   </div>
 );
 
 // Track card component
 const TrackCard = ({ track, onAnalyze, isAnalyzing }) => (
-  <motion.div
+  <Motion.div
     className="track-card"
     layout
     initial={{ opacity: 0, scale: 0.9 }}
@@ -192,7 +193,7 @@ const TrackCard = ({ track, onAnalyze, isAnalyzing }) => (
     </div>
     <div className="track-actions">
       {!track.analysis && (
-        <motion.button
+        <Motion.button
           className="btn btn-sm btn-primary"
           onClick={() => onAnalyze(track)}
           disabled={isAnalyzing}
@@ -201,7 +202,7 @@ const TrackCard = ({ track, onAnalyze, isAnalyzing }) => (
         >
           {isAnalyzing ? <RefreshCw size={14} className="spin" /> : <Wand2 size={14} />}
           Analyze
-        </motion.button>
+        </Motion.button>
       )}
       {track.analysis && (
         <span className="badge badge-success">
@@ -209,7 +210,52 @@ const TrackCard = ({ track, onAnalyze, isAnalyzing }) => (
         </span>
       )}
     </div>
-  </motion.div>
+  </Motion.div>
+);
+
+// Mashup Lab style presets (plain-language descriptions for non-DJs)
+const LAB_STYLES = [
+  {
+    id: 'divine',
+    name: 'Divine Mashup',
+    icon: Heart,
+    description: 'Soft devotional blend — the voice floats over the music with a gentle echo',
+  },
+  {
+    id: 'cocktail_party',
+    name: 'Cocktail Party',
+    icon: Sparkles,
+    description: 'Party style — punchy voice entries over a dance beat, DJ-mashup feel',
+  },
+  {
+    id: 'club_remix',
+    name: 'Club Remix',
+    icon: Zap,
+    description: 'Club style — filtered build-up, a drop, then the voice rides the beat',
+  },
+];
+
+// YouTube import box (shared by both mix types)
+const YouTubeImport = ({ url, onUrlChange, busy, onDownload }) => (
+  <div className="youtube-import">
+    <input
+      type="url"
+      placeholder="Paste a YouTube link to add a song..."
+      value={url}
+      onChange={(e) => onUrlChange(e.target.value)}
+      disabled={busy}
+    />
+    <Motion.button
+      className="btn btn-secondary"
+      onClick={onDownload}
+      disabled={busy || !url.trim()}
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+    >
+      {busy ? <RefreshCw size={14} className="spin" /> : <Download size={14} />}
+      {busy ? 'Downloading...' : 'Add from YouTube'}
+    </Motion.button>
+  </div>
 );
 
 // Cue point editor component
@@ -232,7 +278,7 @@ const CuePointEditor = ({ track, cuePoints, onUpdate }) => {
           const point = cuePoints?.[cue.id];
           const Icon = cue.icon;
           return (
-            <motion.div
+            <Motion.div
               key={cue.id}
               className={`cue-point-item ${point ? 'has-value' : ''}`}
               style={{ '--cue-color': cue.color }}
@@ -258,7 +304,7 @@ const CuePointEditor = ({ track, cuePoints, onUpdate }) => {
                 onChange={(e) => onUpdate(track.name, cue.id, parseFloat(e.target.value))}
                 className="cue-slider"
               />
-            </motion.div>
+            </Motion.div>
           );
         })}
       </div>
@@ -268,7 +314,7 @@ const CuePointEditor = ({ track, cuePoints, onUpdate }) => {
 
 // Transition preview component
 const TransitionPreview = ({ track1, track2, onPreview, isLoading }) => (
-  <motion.div
+  <Motion.div
     className="transition-preview-card"
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
@@ -306,7 +352,7 @@ const TransitionPreview = ({ track1, track2, onPreview, isLoading }) => (
         className="preview-duration-input"
       />
     </div>
-    <motion.button
+    <Motion.button
       className="btn btn-primary w-full"
       onClick={onPreview}
       disabled={!track1 || !track2 || isLoading}
@@ -324,8 +370,8 @@ const TransitionPreview = ({ track1, track2, onPreview, isLoading }) => (
           Preview Transition
         </>
       )}
-    </motion.button>
-  </motion.div>
+    </Motion.button>
+  </Motion.div>
 );
 
 // Style selector component
@@ -339,7 +385,7 @@ const StyleSelector = ({ selected, onSelect }) => {
   return (
     <div className="style-selector">
       {styles.map(style => (
-        <motion.div
+        <Motion.div
           key={style.id}
           className={`style-option ${selected === style.id ? 'selected' : ''}`}
           onClick={() => onSelect(style.id)}
@@ -354,15 +400,15 @@ const StyleSelector = ({ selected, onSelect }) => {
             <p>{style.description}</p>
           </div>
           {selected === style.id && (
-            <motion.div
+            <Motion.div
               className="style-check"
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
             >
               <Check size={16} />
-            </motion.div>
+            </Motion.div>
           )}
-        </motion.div>
+        </Motion.div>
       ))}
     </div>
   );
@@ -370,15 +416,18 @@ const StyleSelector = ({ selected, onSelect }) => {
 
 // Main Sandalwood Studio component
 export default function SandalwoodStudio() {
+  const [mixType, setMixType] = useState(null); // null | 'lab' | 'nonstop'
+  const [labStyle, setLabStyle] = useState('divine');
+  const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [tracks, setTracks] = useState([]);
-  const [selectedTracks, setSelectedTracks] = useState([]);
+  const [selectedNames, setSelectedNames] = useState([]);
   const [singerProfiles, setSingerProfiles] = useState([]);
   const [eraProfiles, setEraProfiles] = useState([]);
   const [selectedStyle, setSelectedStyle] = useState('energetic');
   const [duration, setDuration] = useState(10);
   const [isCreating, setIsCreating] = useState(false);
-  const [taskId, setTaskId] = useState(null);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState(null);
   const [customCuePoints, setCustomCuePoints] = useState({});
@@ -387,7 +436,17 @@ export default function SandalwoodStudio() {
   const [groupStyles, setGroupStyles] = useState({});
   const [isPlanLoading, setIsPlanLoading] = useState(false);
 
-  const steps = ['Select Tracks', 'Analyze', 'Review Plan', 'Configure', 'Results'];
+  // Selection is stored as filenames and resolved against the live track
+  // list, so refreshes (uploads, YouTube imports, analysis updates) that
+  // rebuild the track objects can't orphan the selection.
+  const selectedTracks = selectedNames
+    .map(name => tracks.find(t => t.name === name))
+    .filter(Boolean);
+
+  const steps = mixType === 'lab'
+    ? ['Pick Songs', 'Style', 'Create', 'Results']
+    : ['Select Tracks', 'Analyze', 'Review Plan', 'Configure', 'Results'];
+  const resultsStep = steps.length - 1;
 
   const getGradeLetter = (percentage) => {
     if (percentage >= 80) return 'A';
@@ -399,9 +458,18 @@ export default function SandalwoodStudio() {
 
   const fetchSongs = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/songs');
-      const data = await res.json();
-      setTracks(data.songs || []);
+      // Merge the file list with cached analyses so previously analyzed
+      // tracks show as Ready without re-running the 17-step analysis
+      const [songsRes, analysisRes] = await Promise.all([
+        fetch(apiUrl('/api/songs')),
+        fetch(apiUrl('/api/analysis/all')),
+      ]);
+      const data = await songsRes.json();
+      const analyses = (await analysisRes.json()).analyses || {};
+      setTracks((data.songs || []).map(s => ({
+        ...s,
+        analysis: s.analysis || analyses[s.name] || null,
+      })));
     } catch (err) {
       console.error('Failed to fetch songs:', err);
     }
@@ -410,8 +478,8 @@ export default function SandalwoodStudio() {
   const fetchProfiles = async () => {
     try {
       const [singersRes, erasRes] = await Promise.all([
-        fetch('http://localhost:8000/api/singer/profiles'),
-        fetch('http://localhost:8000/api/era/profiles'),
+        fetch(apiUrl('/api/singer/profiles')),
+        fetch(apiUrl('/api/era/profiles')),
       ]);
       const singersData = await singersRes.json();
       const erasData = await erasRes.json();
@@ -424,8 +492,10 @@ export default function SandalwoodStudio() {
 
   // Fetch available songs and profiles on mount
   useEffect(() => {
-    fetchSongs();
-    fetchProfiles();
+    const load = async () => {
+      await Promise.all([fetchSongs(), fetchProfiles()]);
+    };
+    load();
   }, []);
 
   const handleFileUpload = async (e) => {
@@ -435,7 +505,7 @@ export default function SandalwoodStudio() {
     for (const file of files) {
       formData.append('file', file);
       try {
-        await fetch('http://localhost:8000/api/songs/upload', {
+        await fetch(apiUrl('/api/songs/upload'), {
           method: 'POST',
           body: formData,
         });
@@ -449,7 +519,7 @@ export default function SandalwoodStudio() {
 
   const analyzeTrack = async (track) => {
     try {
-      const res = await fetch('http://localhost:8000/api/analyze/kannada', {
+      const res = await fetch(apiUrl('/api/analyze/kannada'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename: track.name }),
@@ -462,6 +532,7 @@ export default function SandalwoodStudio() {
           setTracks(prev => prev.map(t =>
             t.name === track.name ? { ...t, analysis: result } : t
           ));
+          detectSinger(track);
         });
       }
     } catch (err) {
@@ -471,7 +542,7 @@ export default function SandalwoodStudio() {
 
   const detectSinger = async (track) => {
     try {
-      const res = await fetch('http://localhost:8000/api/singer/detect', {
+      const res = await fetch(apiUrl('/api/singer/detect'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename: track.name }),
@@ -490,25 +561,96 @@ export default function SandalwoodStudio() {
     }
   };
 
-  const pollTask = async (taskId, onComplete) => {
+  const pollTask = async (taskId, onComplete, onError) => {
     const poll = async () => {
       try {
-        const res = await fetch(`http://localhost:8000/api/tasks/${taskId}`);
+        const res = await fetch(apiUrl(`/api/tasks/${taskId}`));
         const data = await res.json();
 
         if (data.status === 'completed') {
           onComplete(data.result);
         } else if (data.status === 'failed') {
           console.error('Task failed:', data.error);
+          if (onError) onError(data.error || 'Task failed');
         } else {
           setProgress(data.progress || 0);
           setTimeout(poll, 1000);
         }
       } catch (err) {
         console.error('Poll failed:', err);
+        if (onError) onError(err.message || 'Connection lost');
       }
     };
     poll();
+  };
+
+  const handleTaskError = (message) => {
+    setIsCreating(false);
+    setIsPlanLoading(false);
+    setIsDownloading(false);
+    alert(`Something went wrong: ${message}`);
+  };
+
+  const downloadFromYouTube = async () => {
+    const url = youtubeUrl.trim();
+    if (!url) return;
+    setIsDownloading(true);
+    try {
+      const res = await fetch(apiUrl('/api/songs/youtube'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json();
+      if (data.task_id) {
+        pollTask(data.task_id, () => {
+          setYoutubeUrl('');
+          setIsDownloading(false);
+          fetchSongs();
+        }, handleTaskError);
+      } else {
+        setIsDownloading(false);
+        alert(data.detail || 'Could not start the download');
+      }
+    } catch (err) {
+      console.error('YouTube download failed:', err);
+      setIsDownloading(false);
+    }
+  };
+
+  const createLabMashup = async () => {
+    if (selectedTracks.length !== 2) return;
+    setIsCreating(true);
+    setProgress(0);
+    try {
+      const res = await fetch(apiUrl('/api/mashup/lab'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vocal_track: selectedTracks[0].name,
+          backing_track: selectedTracks[1].name,
+          style: labStyle,
+        }),
+      });
+      const data = await res.json();
+      if (data.task_id) {
+        pollTask(data.task_id, (result) => {
+          setResult(result);
+          setIsCreating(false);
+          setCurrentStep(3);
+        }, handleTaskError);
+      } else {
+        setIsCreating(false);
+        alert(data.detail || 'Could not start the mashup');
+      }
+    } catch (err) {
+      console.error('Mashup Lab creation failed:', err);
+      setIsCreating(false);
+    }
+  };
+
+  const swapLabRoles = () => {
+    setSelectedNames(prev => (prev.length === 2 ? [prev[1], prev[0]] : prev));
   };
 
   const handleCuePointUpdate = (trackName, cueType, time) => {
@@ -526,7 +668,7 @@ export default function SandalwoodStudio() {
     setProgress(0);
 
     try {
-      const res = await fetch('http://localhost:8000/api/mashup/sandalwood', {
+      const res = await fetch(apiUrl('/api/mashup/sandalwood'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -538,12 +680,11 @@ export default function SandalwoodStudio() {
       const data = await res.json();
 
       if (data.task_id) {
-        setTaskId(data.task_id);
         pollTask(data.task_id, (result) => {
           setResult(result);
           setIsCreating(false);
           setCurrentStep(4);
-        });
+        }, handleTaskError);
       }
     } catch (err) {
       console.error('Mashup creation failed:', err);
@@ -556,7 +697,7 @@ export default function SandalwoodStudio() {
     setProgress(0);
 
     try {
-      const res = await fetch('http://localhost:8000/api/mashup/pallavi-medley', {
+      const res = await fetch(apiUrl('/api/mashup/pallavi-medley'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -566,12 +707,11 @@ export default function SandalwoodStudio() {
       const data = await res.json();
 
       if (data.task_id) {
-        setTaskId(data.task_id);
         pollTask(data.task_id, (result) => {
           setResult(result);
           setIsCreating(false);
           setCurrentStep(4);
-        });
+        }, handleTaskError);
       }
     } catch (err) {
       console.error('Pallavi medley creation failed:', err);
@@ -583,7 +723,7 @@ export default function SandalwoodStudio() {
     setIsPlanLoading(true);
     setProgress(0);
     try {
-      const res = await fetch('http://localhost:8000/api/mashup/sandalwood/plan', {
+      const res = await fetch(apiUrl('/api/mashup/sandalwood/plan'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -593,7 +733,6 @@ export default function SandalwoodStudio() {
       });
       const data = await res.json();
       if (data.task_id) {
-        setTaskId(data.task_id);
         pollTask(data.task_id, (result) => {
           setPlanData(result);
           setPlanId(result.plan_id);
@@ -604,7 +743,7 @@ export default function SandalwoodStudio() {
           setGroupStyles(styles);
           setIsPlanLoading(false);
           setCurrentStep(2);
-        });
+        }, handleTaskError);
       }
     } catch (err) {
       console.error('Plan generation failed:', err);
@@ -620,7 +759,7 @@ export default function SandalwoodStudio() {
         group_id: parseInt(gid),
         style: style,
       }));
-      const res = await fetch('http://localhost:8000/api/mashup/sandalwood/create', {
+      const res = await fetch(apiUrl('/api/mashup/sandalwood/create'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -630,12 +769,11 @@ export default function SandalwoodStudio() {
       });
       const data = await res.json();
       if (data.task_id) {
-        setTaskId(data.task_id);
         pollTask(data.task_id, (result) => {
           setResult(result);
           setIsCreating(false);
           setCurrentStep(4);
-        });
+        }, handleTaskError);
       }
     } catch (err) {
       console.error('Create from plan failed:', err);
@@ -646,13 +784,13 @@ export default function SandalwoodStudio() {
   return (
     <div className="sandalwood-studio">
       {/* Hero Header */}
-      <motion.header
+      <Motion.header
         className="studio-header"
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
       >
         <div className="header-content">
-          <motion.div
+          <Motion.div
             className="logo-section"
             whileHover={{ scale: 1.02 }}
           >
@@ -661,28 +799,303 @@ export default function SandalwoodStudio() {
             </div>
             <div className="logo-text">
               <h1>Sandalwood Studio</h1>
-              <span className="version-badge">V2.3</span>
+              <span className="version-badge">V3.0</span>
             </div>
-          </motion.div>
+          </Motion.div>
           <p className="tagline">Professional Kannada Mashup Creation</p>
         </div>
         <div className="header-glow" />
-      </motion.header>
+      </Motion.header>
+
+      {/* Mix type chooser (shown until one is picked) */}
+      {mixType === null && (
+        <Motion.div
+          className="mix-type-chooser"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <h2>What would you like to make?</h2>
+          <div className="mix-type-cards">
+            <Motion.button
+              className="mix-type-card glass-card"
+              onClick={() => { setMixType('lab'); setCurrentStep(0); setSelectedNames([]); }}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+            >
+              <div className="mix-type-icon"><Mic2 size={36} /></div>
+              <h3>Mashup Lab <span className="badge badge-primary">NEW</span></h3>
+              <p>One song's <strong>voice</strong> over another song's <strong>music</strong>.
+                 Like the Cocktail Mashup or a divine devotional blend.</p>
+              <span className="mix-type-hint">Pick 2 songs · 3 styles</span>
+            </Motion.button>
+            <Motion.button
+              className="mix-type-card glass-card"
+              onClick={() => { setMixType('nonstop'); setCurrentStep(0); setSelectedNames([]); }}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+            >
+              <div className="mix-type-icon"><Disc3 size={36} /></div>
+              <h3>Nonstop Party Mix</h3>
+              <p>Many songs joined smoothly into one continuous DJ mix,
+                 planned automatically by compatibility.</p>
+              <span className="mix-type-hint">Pick 2+ songs · auto-planned</span>
+            </Motion.button>
+          </div>
+        </Motion.div>
+      )}
 
       {/* Step Indicator */}
-      <StepIndicator steps={steps} currentStep={currentStep} />
+      {mixType !== null && <StepIndicator steps={steps} currentStep={currentStep} />}
 
       {/* Main Content */}
-      <motion.main
+      <Motion.main
         className="studio-main"
         variants={containerVariants}
         initial="hidden"
         animate="visible"
       >
         <AnimatePresence mode="wait">
+          {/* LAB Step 0: Pick Songs */}
+          {mixType === 'lab' && currentStep === 0 && (
+            <Motion.div
+              key="lab-step-0"
+              className="step-content"
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -50 }}
+            >
+              <div className="panel glass-card panel-wide">
+                <div className="panel-header">
+                  <Music4 size={20} />
+                  <h3>Pick 2 Songs</h3>
+                  <span className="badge badge-primary">{selectedTracks.length}/2 selected</span>
+                </div>
+                <p className="text-muted lab-hint">
+                  First pick = the song whose <strong>voice</strong> you want.
+                  Second pick = the song whose <strong>music</strong> you want.
+                </p>
+
+                <div className="upload-zone">
+                  <input
+                    type="file"
+                    id="lab-file-upload"
+                    multiple
+                    accept="audio/*"
+                    onChange={handleFileUpload}
+                    hidden
+                  />
+                  <label htmlFor="lab-file-upload" className="upload-label">
+                    <Upload size={24} />
+                    <span>Drop files or click to upload</span>
+                  </label>
+                </div>
+
+                <YouTubeImport
+                  url={youtubeUrl}
+                  onUrlChange={setYoutubeUrl}
+                  busy={isDownloading}
+                  onDownload={downloadFromYouTube}
+                />
+
+                <div className="tracks-list">
+                  <AnimatePresence>
+                    {tracks.map(track => {
+                      const roleIndex = selectedNames.indexOf(track.name);
+                      return (
+                        <Motion.div
+                          key={track.name}
+                          className={`track-item ${roleIndex >= 0 ? 'selected' : ''}`}
+                          onClick={() => {
+                            if (roleIndex >= 0) {
+                              setSelectedNames(prev => prev.filter(n => n !== track.name));
+                            } else {
+                              // 3rd pick replaces the Music slot; Voice stays put
+                              setSelectedNames(prev =>
+                                prev.length >= 2 ? [prev[0], track.name] : [...prev, track.name]);
+                            }
+                          }}
+                          layout
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          whileHover={{ backgroundColor: 'rgba(255,255,255,0.05)' }}
+                        >
+                          <div className="track-checkbox">
+                            {roleIndex >= 0 && <Check size={14} />}
+                          </div>
+                          <div className="track-details">
+                            <span className="track-name">{track.name}</span>
+                            <span className="track-size">{track.size_mb} MB</span>
+                          </div>
+                          {roleIndex === 0 && (
+                            <span className="badge badge-primary"><Mic2 size={12} /> Voice</span>
+                          )}
+                          {roleIndex === 1 && (
+                            <span className="badge badge-success"><Music4 size={12} /> Music</span>
+                          )}
+                        </Motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
+                </div>
+
+                {selectedTracks.length === 2 && (
+                  <div className="lab-roles-summary">
+                    <span><Mic2 size={14} /> Voice: <strong>{selectedTracks[0].name}</strong></span>
+                    <Motion.button
+                      className="btn btn-sm btn-secondary"
+                      onClick={swapLabRoles}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      <RefreshCw size={14} /> Swap
+                    </Motion.button>
+                    <span><Music4 size={14} /> Music: <strong>{selectedTracks[1].name}</strong></span>
+                  </div>
+                )}
+              </div>
+
+              <div className="step-actions">
+                <Motion.button
+                  className="btn btn-secondary"
+                  onClick={() => { setMixType(null); setSelectedNames([]); }}
+                  whileHover={{ scale: 1.02 }}
+                >
+                  Back
+                </Motion.button>
+                <Motion.button
+                  className="btn btn-primary btn-lg"
+                  onClick={() => setCurrentStep(1)}
+                  disabled={selectedTracks.length !== 2}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  Continue
+                  <ChevronRight size={18} />
+                </Motion.button>
+              </div>
+            </Motion.div>
+          )}
+
+          {/* LAB Step 1: Style */}
+          {mixType === 'lab' && currentStep === 1 && (
+            <Motion.div
+              key="lab-step-1"
+              className="step-content"
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -50 }}
+            >
+              <div className="panel glass-card panel-wide">
+                <div className="panel-header">
+                  <Sliders size={20} />
+                  <h3>Choose a Style</h3>
+                </div>
+                <div className="lab-style-cards">
+                  {LAB_STYLES.map(style => {
+                    const Icon = style.icon;
+                    return (
+                      <Motion.button
+                        key={style.id}
+                        className={`lab-style-card glass-card ${labStyle === style.id ? 'selected' : ''}`}
+                        onClick={() => setLabStyle(style.id)}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        <Icon size={28} />
+                        <h4>{style.name}</h4>
+                        <p>{style.description}</p>
+                        {labStyle === style.id && (
+                          <span className="badge badge-primary"><Check size={12} /> Selected</span>
+                        )}
+                      </Motion.button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="step-actions">
+                <Motion.button
+                  className="btn btn-secondary"
+                  onClick={() => setCurrentStep(0)}
+                  whileHover={{ scale: 1.02 }}
+                >
+                  Back
+                </Motion.button>
+                <Motion.button
+                  className="btn btn-primary btn-lg"
+                  onClick={() => setCurrentStep(2)}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  Continue
+                  <ChevronRight size={18} />
+                </Motion.button>
+              </div>
+            </Motion.div>
+          )}
+
+          {/* LAB Step 2: Create */}
+          {mixType === 'lab' && currentStep === 2 && (
+            <Motion.div
+              key="lab-step-2"
+              className="step-content"
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -50 }}
+            >
+              <div className="panel glass-card panel-wide">
+                <div className="panel-header">
+                  <Wand2 size={20} />
+                  <h3>Ready to Create</h3>
+                </div>
+                <div className="lab-summary-rows">
+                  <div className="lab-summary-row">
+                    <Mic2 size={16} />
+                    <span>Voice from</span>
+                    <strong>{selectedTracks[0]?.name}</strong>
+                  </div>
+                  <div className="lab-summary-row">
+                    <Music4 size={16} />
+                    <span>Music from</span>
+                    <strong>{selectedTracks[1]?.name}</strong>
+                  </div>
+                  <div className="lab-summary-row">
+                    <Sliders size={16} />
+                    <span>Style</span>
+                    <strong>{LAB_STYLES.find(s => s.id === labStyle)?.name}</strong>
+                  </div>
+                </div>
+                <p className="text-muted lab-hint">
+                  The app will analyze both songs, separate the voice from the music,
+                  match their speed and key, and place the voice on the beat.
+                  This can take a few minutes.
+                </p>
+              </div>
+              <div className="step-actions">
+                <Motion.button
+                  className="btn btn-secondary"
+                  onClick={() => setCurrentStep(1)}
+                  whileHover={{ scale: 1.02 }}
+                >
+                  Back
+                </Motion.button>
+                <Motion.button
+                  className="btn btn-primary btn-lg"
+                  onClick={createLabMashup}
+                  disabled={isCreating}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <Play size={18} />
+                  Create Mashup
+                </Motion.button>
+              </div>
+            </Motion.div>
+          )}
+
           {/* Step 0: Select Tracks */}
-          {currentStep === 0 && (
-            <motion.div
+          {mixType === 'nonstop' && currentStep === 0 && (
+            <Motion.div
               key="step-0"
               className="step-content"
               initial={{ opacity: 0, x: 50 }}
@@ -713,17 +1126,24 @@ export default function SandalwoodStudio() {
                     </label>
                   </div>
 
+                  <YouTubeImport
+                    url={youtubeUrl}
+                    onUrlChange={setYoutubeUrl}
+                    busy={isDownloading}
+                    onDownload={downloadFromYouTube}
+                  />
+
                   <div className="tracks-list">
                     <AnimatePresence>
                       {tracks.map(track => (
-                        <motion.div
+                        <Motion.div
                           key={track.name}
-                          className={`track-item ${selectedTracks.includes(track) ? 'selected' : ''}`}
+                          className={`track-item ${selectedNames.includes(track.name) ? 'selected' : ''}`}
                           onClick={() => {
-                            if (selectedTracks.includes(track)) {
-                              setSelectedTracks(prev => prev.filter(t => t !== track));
+                            if (selectedNames.includes(track.name)) {
+                              setSelectedNames(prev => prev.filter(n => n !== track.name));
                             } else {
-                              setSelectedTracks(prev => [...prev, track]);
+                              setSelectedNames(prev => [...prev, track.name]);
                             }
                           }}
                           layout
@@ -733,7 +1153,7 @@ export default function SandalwoodStudio() {
                           whileHover={{ backgroundColor: 'rgba(255,255,255,0.05)' }}
                         >
                           <div className="track-checkbox">
-                            {selectedTracks.includes(track) && <Check size={14} />}
+                            {selectedNames.includes(track.name) && <Check size={14} />}
                           </div>
                           <div className="track-details">
                             <span className="track-name">{track.name}</span>
@@ -742,7 +1162,7 @@ export default function SandalwoodStudio() {
                           {track.has_analysis && (
                             <span className="badge badge-success">Analyzed</span>
                           )}
-                        </motion.div>
+                        </Motion.div>
                       ))}
                     </AnimatePresence>
                   </div>
@@ -768,7 +1188,7 @@ export default function SandalwoodStudio() {
               </div>
 
               <div className="step-actions">
-                <motion.button
+                <Motion.button
                   className="btn btn-primary btn-lg"
                   onClick={() => setCurrentStep(1)}
                   disabled={selectedTracks.length < 2}
@@ -777,14 +1197,14 @@ export default function SandalwoodStudio() {
                 >
                   Continue
                   <ChevronRight size={18} />
-                </motion.button>
+                </Motion.button>
               </div>
-            </motion.div>
+            </Motion.div>
           )}
 
           {/* Step 1: Analyze */}
-          {currentStep === 1 && (
-            <motion.div
+          {mixType === 'nonstop' && currentStep === 1 && (
+            <Motion.div
               key="step-1"
               className="step-content"
               initial={{ opacity: 0, x: 50 }}
@@ -797,14 +1217,14 @@ export default function SandalwoodStudio() {
                   <div className="panel-header">
                     <Wand2 size={20} />
                     <h3>Deep Analysis</h3>
-                    <motion.button
+                    <Motion.button
                       className="btn btn-secondary"
                       onClick={() => selectedTracks.forEach(t => !t.analysis && analyzeTrack(t))}
                       whileHover={{ scale: 1.02 }}
                     >
                       <Wand2 size={14} />
                       Analyze All
-                    </motion.button>
+                    </Motion.button>
                   </div>
 
                   <div className="analysis-grid">
@@ -847,7 +1267,7 @@ export default function SandalwoodStudio() {
                 <button className="btn btn-secondary" onClick={() => setCurrentStep(0)}>
                   Back
                 </button>
-                <motion.button
+                <Motion.button
                   className="btn btn-primary btn-lg"
                   onClick={generatePlan}
                   disabled={selectedTracks.some(t => !t.analysis && !t.has_analysis) || isPlanLoading}
@@ -859,14 +1279,14 @@ export default function SandalwoodStudio() {
                   ) : (
                     <>Generate Plan <ChevronRight size={18} /></>
                   )}
-                </motion.button>
+                </Motion.button>
               </div>
-            </motion.div>
+            </Motion.div>
           )}
 
           {/* Step 2: Review Plan */}
-          {currentStep === 2 && planData && (
-            <motion.div
+          {mixType === 'nonstop' && currentStep === 2 && planData && (
+            <Motion.div
               key="step-2-plan"
               className="step-content"
               initial={{ opacity: 0, x: 50 }}
@@ -950,7 +1370,7 @@ export default function SandalwoodStudio() {
                 <button className="btn btn-secondary" onClick={() => setCurrentStep(1)}>
                   Back
                 </button>
-                <motion.button
+                <Motion.button
                   className="btn btn-primary btn-lg"
                   onClick={() => setCurrentStep(3)}
                   disabled={!planData.groups || planData.groups.length === 0}
@@ -958,14 +1378,14 @@ export default function SandalwoodStudio() {
                   whileTap={{ scale: 0.98 }}
                 >
                   Configure & Create <ChevronRight size={18} />
-                </motion.button>
+                </Motion.button>
               </div>
-            </motion.div>
+            </Motion.div>
           )}
 
           {/* Step 3: Configure */}
-          {currentStep === 3 && (
-            <motion.div
+          {mixType === 'nonstop' && currentStep === 3 && (
+            <Motion.div
               key="step-2"
               className="step-content"
               initial={{ opacity: 0, x: 50 }}
@@ -996,14 +1416,14 @@ export default function SandalwoodStudio() {
                   </div>
 
                   <div className="medley-option">
-                    <motion.button
+                    <Motion.button
                       className="btn btn-secondary w-full"
                       onClick={createPallaviMedley}
                       whileHover={{ scale: 1.02 }}
                     >
                       <Radio size={16} />
                       Create Pallavi Medley Instead
-                    </motion.button>
+                    </Motion.button>
                     <p className="option-description">
                       Chorus-to-chorus transitions for authentic Kannada medley style
                     </p>
@@ -1047,7 +1467,7 @@ export default function SandalwoodStudio() {
                 <button className="btn btn-secondary" onClick={() => setCurrentStep(2)}>
                   Back
                 </button>
-                <motion.button
+                <Motion.button
                   className="btn btn-primary btn-lg create-btn"
                   onClick={planData ? createFromPlan : createMashup}
                   disabled={isCreating}
@@ -1070,21 +1490,21 @@ export default function SandalwoodStudio() {
                       Create Mashup
                     </>
                   )}
-                </motion.button>
+                </Motion.button>
               </div>
-            </motion.div>
+            </Motion.div>
           )}
 
           {/* Step 4: Results */}
-          {currentStep === 4 && result && (
-            <motion.div
+          {currentStep === resultsStep && result && (
+            <Motion.div
               key="step-4"
               className="step-content"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
             >
               <div className="result-panel glass-card">
-                <motion.div
+                <Motion.div
                   className="result-success"
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
@@ -1095,7 +1515,7 @@ export default function SandalwoodStudio() {
                   </div>
                   <h2>{result.mashups ? `${result.total_created} Mashup${result.total_created !== 1 ? 's' : ''} Created!` : 'Mashup Created!'}</h2>
                   <p>Your professional Sandalwood mashup{result.mashups ? 's are' : ' is'} ready</p>
-                </motion.div>
+                </Motion.div>
 
                 {/* Multiple mashup results (from Plan → Create flow) */}
                 {result.mashups ? (
@@ -1108,14 +1528,14 @@ export default function SandalwoodStudio() {
                         </div>
                         <p className="text-muted">{mashup.track_count} tracks</p>
                         {mashup.output_filename ? (
-                          <motion.a
-                            href={`http://localhost:8000/api/stream/${mashup.output_filename}`}
+                          <Motion.a
+                            href={apiUrl(`/api/stream/${mashup.output_filename}`)}
                             className="btn btn-primary"
                             download
                             whileHover={{ scale: 1.02 }}
                           >
                             <Download size={16} /> Download
-                          </motion.a>
+                          </Motion.a>
                         ) : (
                           <span className="text-muted">Failed: {mashup.error}</span>
                         )}
@@ -1144,52 +1564,67 @@ export default function SandalwoodStudio() {
                         <AudioWaveform size={20} />
                         <div>
                           <span className="stat-label">Format</span>
-                          <span className="stat-value">320kbps MP3</span>
+                          <span className="stat-value">
+                            {result.output_filename?.endsWith('.wav')
+                              ? 'WAV (install ffmpeg for MP3)'
+                              : '320kbps MP3'}
+                          </span>
                         </div>
                       </div>
                     </div>
 
+                    {result.warnings?.length > 0 && (
+                      <div className="result-warnings">
+                        {result.warnings.map((warning, i) => (
+                          <p key={i} className="text-muted">⚠ {warning}</p>
+                        ))}
+                      </div>
+                    )}
+
                     <div className="result-actions">
-                      <motion.a
-                        href={`http://localhost:8000/api/stream/${result.output_filename}`}
+                      <Motion.a
+                        href={apiUrl(`/api/stream/${result.output_filename}`)}
                         className="btn btn-primary btn-lg"
                         download
                         whileHover={{ scale: 1.02 }}
                       >
                         <Download size={18} />
                         Download Mashup
-                      </motion.a>
+                      </Motion.a>
                     </div>
                   </>
                 )}
 
                 <div className="result-actions">
-                  <motion.button
+                  <Motion.button
                     className="btn btn-secondary"
                     onClick={() => {
+                      setMixType(null);
                       setCurrentStep(0);
-                      setSelectedTracks([]);
+                      setSelectedNames([]);
                       setResult(null);
                       setPlanData(null);
                       setPlanId(null);
                       setGroupStyles({});
+                      setLabStyle('divine');
+                      setYoutubeUrl('');
                     }}
                     whileHover={{ scale: 1.02 }}
                   >
                     <RefreshCw size={16} />
                     Create Another
-                  </motion.button>
+                  </Motion.button>
                 </div>
               </div>
-            </motion.div>
+            </Motion.div>
           )}
         </AnimatePresence>
-      </motion.main>
+      </Motion.main>
 
       {/* Progress Overlay */}
       <AnimatePresence>
         {isCreating && (
-          <motion.div
+          <Motion.div
             className="progress-overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1197,13 +1632,13 @@ export default function SandalwoodStudio() {
           >
             <div className="progress-modal glass-card">
               <div className="progress-animation">
-                <motion.div
+                <Motion.div
                   className="progress-disc"
                   animate={{ rotate: 360 }}
                   transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
                 >
                   <Disc3 size={64} />
-                </motion.div>
+                </Motion.div>
               </div>
               <h3>Creating Your Mashup</h3>
               <p className="progress-status">
@@ -1213,7 +1648,7 @@ export default function SandalwoodStudio() {
                  'Finalizing output...'}
               </p>
               <div className="progress-bar">
-                <motion.div
+                <Motion.div
                   className="progress-bar-fill"
                   initial={{ width: 0 }}
                   animate={{ width: `${progress}%` }}
@@ -1221,7 +1656,7 @@ export default function SandalwoodStudio() {
               </div>
               <span className="progress-percent">{progress}%</span>
             </div>
-          </motion.div>
+          </Motion.div>
         )}
       </AnimatePresence>
     </div>

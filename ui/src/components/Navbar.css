@@ -81,6 +81,17 @@
   box-shadow: 0 0 12px rgba(255, 215, 0, 0.2);
 }
 
+/* Secondary (de-emphasized) link for non-Sandalwood modes */
+.nav-link.nav-link-secondary {
+  opacity: 0.55;
+  font-size: 0.85rem;
+}
+
+.nav-link.nav-link-secondary:hover,
+.nav-link.nav-link-secondary.active {
+  opacity: 1;
+}
+
 @media (max-width: 768px) {
   .navbar {
     padding: 0 var(--space-md);

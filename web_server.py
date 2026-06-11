@@ -75,6 +75,10 @@ from sandalwood_mixer import (
     create_sandalwood_mashup,
     create_pallavi_medley,
 )
+from mashup_lab import (
+    create_lab_mashup,
+    STYLE_PRESETS as MASHUP_LAB_STYLES,
+)
 from sandalwood_enhancements import (
     validate_audio_file,
     batch_validate_audio,
@@ -178,11 +182,13 @@ _mashup_plans: dict[str, dict] = {}
 _plans_lock = threading.Lock()
 
 
-def _create_task() -> dict:
+def _create_task(task_type: str = "task", total_items: int = 1) -> dict:
     """Create a new task entry and return it."""
     task_id = str(uuid.uuid4())
     task = {
         "task_id": task_id,
+        "type": task_type,
+        "total_items": total_items,
         "status": "pending",
         "progress": 0,
         "log": [],
@@ -230,37 +236,67 @@ class _LogCapture(io.TextIOBase):
     def _try_update_progress(self, line: str):
         """Try to infer progress from common log patterns."""
         lower = line.lower()
-        # Step-based progress updates based on analysis stages
-        if "base analysis" in lower:
-            self._task["progress"] = 10
-        elif "vocal analysis" in lower:
-            self._task["progress"] = 20
-        elif "beat grid" in lower:
-            self._task["progress"] = 30
-        elif "tala detection" in lower:
-            self._task["progress"] = 40
-        elif "scale" in lower and "analysis" in lower:
-            self._task["progress"] = 45
-        elif "hook" in lower and "drop" in lower:
-            self._task["progress"] = 50
-        elif "harmonic rhythm" in lower:
-            self._task["progress"] = 55
-        elif "spectral analysis" in lower:
-            self._task["progress"] = 60
-        elif "percussion" in lower:
-            self._task["progress"] = 65
-        elif "section classification" in lower:
+        # Mashup Lab tasks set coarse analysis milestones explicitly (30/60),
+        # so the per-stage analysis keywords below would make the bar jump
+        # backwards once the mixing phase starts — skip them for those tasks.
+        if self._task.get("type") != "mashup_lab":
+            # Step-based progress updates based on analysis stages
+            if "base analysis" in lower:
+                self._task["progress"] = 10
+                return
+            elif "vocal analysis" in lower:
+                self._task["progress"] = 20
+                return
+            elif "beat grid" in lower:
+                self._task["progress"] = 30
+                return
+            elif "tala detection" in lower:
+                self._task["progress"] = 40
+                return
+            elif "scale" in lower and "analysis" in lower:
+                self._task["progress"] = 45
+                return
+            elif "hook" in lower and "drop" in lower:
+                self._task["progress"] = 50
+                return
+            elif "harmonic rhythm" in lower:
+                self._task["progress"] = 55
+                return
+            elif "spectral analysis" in lower:
+                self._task["progress"] = 60
+                return
+            elif "percussion" in lower:
+                self._task["progress"] = 65
+                return
+            elif "section classification" in lower:
+                self._task["progress"] = 70
+                return
+            elif "emotional" in lower:
+                self._task["progress"] = 75
+                return
+            elif "phrase boundary" in lower:
+                self._task["progress"] = 80
+                return
+            elif "vocal-free" in lower:
+                self._task["progress"] = 85
+                return
+            elif "cue point" in lower:
+                self._task["progress"] = 90
+                return
+            elif "transition recommendation" in lower:
+                self._task["progress"] = 95
+                return
+        # Mashup Lab mixing stages (run after the analysis phase)
+        if "separating stems" in lower:
             self._task["progress"] = 70
-        elif "emotional" in lower:
-            self._task["progress"] = 75
-        elif "phrase boundary" in lower:
-            self._task["progress"] = 80
-        elif "vocal-free" in lower:
-            self._task["progress"] = 85
-        elif "cue point" in lower:
-            self._task["progress"] = 90
-        elif "transition recommendation" in lower:
-            self._task["progress"] = 95
+        elif "tempo locking" in lower:
+            self._task["progress"] = 78
+        elif "key locking" in lower:
+            self._task["progress"] = 82
+        elif "placing vocal" in lower:
+            self._task["progress"] = 86
+        elif "sidechain" in lower:
+            self._task["progress"] = 92
         elif "complete" in lower or "exporting" in lower:
             self._task["progress"] = 98
 
@@ -308,7 +344,7 @@ def _save_analysis_cache(cache: dict):
 
 def _is_deep_analysis(entry: dict) -> bool:
     """Check if cached analysis is the full 17-step Kannada deep analysis."""
-    deep_keys = {'tala', 'beat_grid', 'scale', 'section_classification'}
+    deep_keys = {'tala', 'beat_grid', 'scale', 'sections'}
     return deep_keys.issubset(entry.keys())
 
 
@@ -402,6 +438,20 @@ class SandalwoodCreateRequest(BaseModel):
     def validate_plan_id(cls, v):
         if '..' in v or '/' in v:
             raise ValueError('Invalid plan_id')
+        return v
+
+
+class MashupLabRequest(BaseModel):
+    """Request for a Mashup Lab creation: one song's voice over another's music."""
+    vocal_track: str = Field(..., min_length=1, max_length=255)
+    backing_track: str = Field(..., min_length=1, max_length=255)
+    style: str = Field("divine", pattern="^(divine|cocktail_party|club_remix)$")
+
+    @field_validator('vocal_track', 'backing_track')
+    @classmethod
+    def validate_no_traversal(cls, v):
+        if '..' in v or v.startswith('/'):
+            raise ValueError('Invalid filename')
         return v
 
 
@@ -682,6 +732,27 @@ async def upload_song(file: UploadFile = File(...)):
         "size_bytes": stat.st_size,
         "size_mb": round(stat.st_size / (1024 * 1024), 2),
         "path": dest_path,
+    }
+
+
+# ------------------------------------------------------------------
+# Get all cached analyses (must be registered before /{filename})
+# ------------------------------------------------------------------
+@app.get("/api/analysis/all")
+async def get_all_analysis():
+    """Get all cached analysis data."""
+    cache = _load_analysis_cache()
+
+    # Filter to only include files in SONGS_DIR
+    song_analyses = {}
+    for path, analysis in cache.items():
+        if SONGS_DIR in path:
+            filename = os.path.basename(path)
+            song_analyses[filename] = analysis
+
+    return {
+        "count": len(song_analyses),
+        "analyses": song_analyses,
     }
 
 
@@ -1334,6 +1405,80 @@ async def create_pallavi_medley_endpoint(req: PallaviMedleyRequest):
 
 
 # ------------------------------------------------------------------
+# Mashup Lab: vocal-over-instrumental mashups (V3 signature feature)
+# ------------------------------------------------------------------
+@app.post("/api/mashup/lab")
+async def mashup_lab_endpoint(req: MashupLabRequest):
+    """
+    Create a vocal-over-instrumental mashup: the VOICE of one song laid over
+    the MUSIC of another, tempo-locked, key-locked and beat-aligned.
+    Styles: divine | cocktail_party | club_remix
+    """
+    vocal_path = validate_safe_path(SONGS_DIR, req.vocal_track)
+    backing_path = validate_safe_path(SONGS_DIR, req.backing_track)
+    if not os.path.isfile(vocal_path):
+        raise HTTPException(status_code=404, detail=f"Song file not found: {req.vocal_track}")
+    if not os.path.isfile(backing_path):
+        raise HTTPException(status_code=404, detail=f"Song file not found: {req.backing_track}")
+    if req.vocal_track == req.backing_track:
+        raise HTTPException(status_code=400, detail="Pick two different songs for a mashup")
+
+    task = _create_task("mashup_lab", 2)
+
+    def _do_lab_mashup():
+        venv_path = os.environ.get("VIRTUAL_ENV") or os.path.join(BASE_DIR, "venv")
+
+        cache = _load_analysis_cache()
+        analyses = {}
+        for idx, (role, fname, fpath) in enumerate(
+                [("voice", req.vocal_track, vocal_path),
+                 ("music", req.backing_track, backing_path)]):
+            cached = cache.get(fpath)
+            if cached and _is_deep_analysis(cached):
+                print(f"[{idx + 1}/2] Using cached deep analysis ({role}): {fname}")
+                analyses[role] = cached
+            else:
+                print(f"[{idx + 1}/2] Deep analysis ({role}): {fname}")
+                analyses[role] = analyze_kannada_track_for_mashup(fpath, venv_path)
+                cache[fpath] = analyses[role]
+            task["progress"] = 30 * (idx + 1)
+        _save_analysis_cache(cache)
+
+        task["progress"] = 65
+        result = create_lab_mashup(
+            vocal_analysis=analyses["voice"],
+            backing_analysis=analyses["music"],
+            output_dir=OUTPUT_DIR,
+            style=req.style,
+            venv_path=venv_path,
+        )
+        task["progress"] = 98
+
+        print(f"Mashup Lab complete! Audio: {result['output_filename']}")
+        return {
+            "output_filename": result["output_filename"],
+            "style": result["style"],
+            "separator_used": result["separator_used"],
+            "degraded": result["degraded"],
+            "target_bpm": result["target_bpm"],
+            "semitone_shift": result["semitone_shift"],
+            "tempo_ratio": result["tempo_ratio"],
+            "warnings": result["warnings"],
+            "vocal_track": req.vocal_track,
+            "backing_track": req.backing_track,
+        }
+
+    _run_in_background(task, _do_lab_mashup)
+    return {
+        "task_id": task["task_id"],
+        "status": "pending",
+        "vocal_track": req.vocal_track,
+        "backing_track": req.backing_track,
+        "style": req.style,
+    }
+
+
+# ------------------------------------------------------------------
 # List output files
 # ------------------------------------------------------------------
 @app.get("/api/outputs")
@@ -1719,24 +1864,6 @@ async def export_for_dj_software(req: ExportRequest):
 # ------------------------------------------------------------------
 # Get all analysis data (for compatibility calculations)
 # ------------------------------------------------------------------
-@app.get("/api/analysis/all")
-async def get_all_analysis():
-    """Get all cached analysis data."""
-    cache = _load_analysis_cache()
-
-    # Filter to only include files in SONGS_DIR
-    song_analyses = {}
-    for path, analysis in cache.items():
-        if SONGS_DIR in path:
-            filename = os.path.basename(path)
-            song_analyses[filename] = analysis
-
-    return {
-        "count": len(song_analyses),
-        "analyses": song_analyses,
-    }
-
-
 # ---------------------------------------------------------------------------
 # SANDALWOOD ENHANCEMENTS API
 # ---------------------------------------------------------------------------
@@ -2103,12 +2230,15 @@ async def list_features():
     List all available features and their status.
     """
     return {
-        "version": "2.3.0",
+        "version": "3.0.0",
         "features": {
             "core": {
-                "quick_mashup": True,
-                "dj_set": True,
                 "sandalwood_mashup": True,
+                "mashup_lab": {
+                    "styles": list(MASHUP_LAB_STYLES.keys()),
+                },
+                "quick_mashup": True,  # Advanced page
+                "dj_set": True,  # Advanced page
             },
             "analysis": {
                 "17_step_analysis": True,

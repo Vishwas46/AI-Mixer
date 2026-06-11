@@ -324,7 +324,7 @@ def export_analysis_json(
             "scale": analysis.get('scale_ragam', {}).get('detected_scale'),
             "cue_points": analysis.get('dj_cue_points', {}),
             "structure": analysis.get('structure', []),
-            "sections": analysis.get('section_classification', []),
+            "sections": analysis.get('sections', {}).get('sections', []),
         }
         export_data["tracks"].append(track_data)
 

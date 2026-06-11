@@ -1,66 +1,78 @@
 import { useEffect, useState, useRef } from 'react'
 import { CheckCircle, AlertCircle, Loader } from 'lucide-react'
+import { apiUrl } from '../api'
 import './TaskProgress.css'
 
 function TaskProgress({ taskId, onComplete }) {
   const [task, setTask] = useState(null)
   const [logs, setLogs] = useState([])
   const logsEndRef = useRef(null)
-  const eventSourceRef = useRef(null)
 
   useEffect(() => {
     if (!taskId) return
 
-    // Use SSE for live updates
-    const eventSource = new EventSource(`/api/tasks/${taskId}/stream`)
-    eventSourceRef.current = eventSource
+    let finished = false
+    let pollTimer = null
+    const eventSource = new EventSource(apiUrl(`/api/tasks/${taskId}/stream`))
 
+    const finish = (data) => {
+      if (finished) return
+      finished = true
+      eventSource.close()
+      if (pollTimer) clearTimeout(pollTimer)
+      if (onComplete) onComplete(data)
+    }
+
+    // The stream emits per-field events — {type:'log', message},
+    // {type:'progress', progress}, {type:'status', status} and a terminal
+    // {type:'complete', status, result|error} — merge them into the task
+    // instead of treating each event as a full task object.
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data)
-      setTask(data)
-      if (data.log) {
-        setLogs(data.log)
+      if (data.type === 'log') {
+        if (data.message) setLogs(prev => [...prev, data.message])
+        return
       }
-      if (data.status === 'completed' || data.status === 'failed') {
-        eventSource.close()
-        if (onComplete) {
-          onComplete(data)
-        }
+      setTask(prev => ({ ...(prev || { status: 'running', progress: 0 }), ...data }))
+      if (data.type === 'complete') {
+        finish(data)
       }
     }
 
     eventSource.onerror = () => {
+      if (finished) return
       eventSource.close()
-      // Fall back to polling
-      pollTask()
+      // Fall back to polling the task endpoint
+      const poll = async () => {
+        if (finished) return
+        try {
+          const res = await fetch(apiUrl(`/api/tasks/${taskId}`))
+          const data = await res.json()
+          setTask(data)
+          if (data.log) setLogs(data.log)
+          if (data.status === 'completed' || data.status === 'failed') {
+            finish(data)
+          } else {
+            pollTimer = setTimeout(poll, 1000)
+          }
+        } catch (err) {
+          console.error('Poll error:', err)
+          pollTimer = setTimeout(poll, 2000)
+        }
+      }
+      poll()
     }
 
     return () => {
+      finished = true
       eventSource.close()
+      if (pollTimer) clearTimeout(pollTimer)
     }
   }, [taskId])
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
-
-  const pollTask = async () => {
-    try {
-      const res = await fetch(`/api/tasks/${taskId}`)
-      const data = await res.json()
-      setTask(data)
-      if (data.log) {
-        setLogs(data.log)
-      }
-      if (data.status !== 'completed' && data.status !== 'failed') {
-        setTimeout(pollTask, 1000)
-      } else if (onComplete) {
-        onComplete(data)
-      }
-    } catch (err) {
-      console.error('Poll error:', err)
-    }
-  }
 
   if (!task) {
     return (

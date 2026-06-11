@@ -13,20 +13,23 @@
 # -----------------------------------------------------------------------------
 
 import os
-import tempfile
 import numpy as np
 import librosa
-import soundfile as sf
 import pyrubberband as pyrb
 import scipy.signal
 import scipy.ndimage
 import subprocess
 from datetime import datetime
-from pydub import AudioSegment
+
+from audio_utils import export_audio
 
 # Try to import Pedalboard for Studio-Grade Mastering
 try:
-    from pedalboard import Pedalboard, Compressor, PeakLimiter, HighpassFilter, Delay
+    from pedalboard import Pedalboard, Compressor, HighpassFilter, Delay
+    try:
+        from pedalboard import Limiter
+    except ImportError:  # pre-0.9 releases shipped the class as PeakLimiter
+        from pedalboard import PeakLimiter as Limiter
     HAS_PEDALBOARD = True
 except ImportError:
     HAS_PEDALBOARD = False
@@ -85,7 +88,12 @@ def time_stretch_audio(y, sr, source_bpm, target_bpm):
     try:
         return pyrb.time_stretch(y, sr, ratio, rbargs={'-c': '3'})
     except Exception:
-        return pyrb.time_stretch(y, sr, ratio)
+        try:
+            return pyrb.time_stretch(y, sr, ratio)
+        except Exception:
+            # rubberband binary missing — librosa phase-vocoder fallback
+            print("  [DSP] rubberband unavailable, using librosa time-stretch fallback")
+            return librosa.effects.time_stretch(y=y, rate=ratio)
 
 def pitch_shift_pro(y, sr, semitones, cents_offset=0, is_vocal=False):
     """
@@ -100,7 +108,12 @@ def pitch_shift_pro(y, sr, semitones, cents_offset=0, is_vocal=False):
     try:
         return pyrb.pitch_shift(y, sr, total_shift, rbargs=rbargs)
     except Exception:
-        return pyrb.pitch_shift(y, sr, total_shift)
+        try:
+            return pyrb.pitch_shift(y, sr, total_shift)
+        except Exception:
+            # rubberband binary missing — librosa fallback (no formant preservation)
+            print("  [DSP] rubberband unavailable, using librosa pitch-shift fallback")
+            return librosa.effects.pitch_shift(y=y, sr=sr, n_steps=total_shift)
 
 def dynamic_sidechain_ducking(instrumental, vocal, sr, max_reduction_db=-4.0):
     """
@@ -160,16 +173,21 @@ def apply_master_bus_glue(y, sr, target_lufs=-14.0):
         board = Pedalboard([
             HighpassFilter(cutoff_frequency_hz=30), # Remove subsonic rumble
             Compressor(threshold_db=-14.0, ratio=2.5, attack_ms=15.0, release_ms=150.0),
-            PeakLimiter(threshold_db=-0.3)
+            Limiter(threshold_db=-0.3, release_ms=100.0)
         ])
         y_2d = np.expand_dims(y, axis=0)
-        processed = board(y_2d, sr, reset=True)
-        return processed[0]
+        y = board(y_2d, sr, reset=True)[0]
     else:
         peak = np.max(np.abs(y))
         if peak > 0:
-            return y * (0.95 / peak)
-        return y
+            y = y * (0.95 / peak)
+
+    # True-peak safety: limiter release tails can overshoot slightly, and
+    # 16-bit export would hard-clip anything above full scale
+    peak = np.max(np.abs(y)) if len(y) else 0.0
+    if peak > 0.985:
+        y = y * (0.985 / peak)
+    return y
 
 def get_key_semitone_diff(key1_idx, mode1, key2_idx, mode2):
     diff = (key2_idx - key1_idx) % 12
@@ -261,7 +279,7 @@ def calculate_transition_duration(track1_analysis, track2_analysis, target_bpm):
 
 def get_pallavi_time(track_analysis):
     """Get the start time of the first Pallavi section."""
-    section_class = track_analysis.get('section_classification', {})
+    section_class = track_analysis.get('sections', {})
     pallavis = section_class.get('pallavis', [])
     if pallavis:
         return pallavis[0].get('start', None)
@@ -603,22 +621,11 @@ def create_sandalwood_mashup(tracks_analysis, mashup_plan, output_dir, target_lu
     # -------------------------------------------------------------------------
     # PHASE 5: Export
     # -------------------------------------------------------------------------
-    os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    output_filename = f"sandalwood_pro_mix_{style}_{timestamp}.mp3"
-    output_path = os.path.join(output_dir, output_filename)
-    bitrate = "320k" if export_quality == 'high' else "256k"
+    base_name = f"sandalwood_pro_mix_{style}_{timestamp}"
+    print(f"Exporting: {base_name} ({len(final_audio)/sr:.1f}s)")
+    output_path = export_audio(final_audio, sr, output_dir, base_name, export_quality)
 
-    print(f"Exporting: {output_filename} ({len(final_audio)/sr:.1f}s, {bitrate})")
-    tmp_wav = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
-    try:
-        sf.write(tmp_wav.name, final_audio, sr)
-        audio_segment = AudioSegment.from_wav(tmp_wav.name)
-        audio_segment.export(output_path, format="mp3", bitrate=bitrate)
-    finally:
-        os.unlink(tmp_wav.name)
-        
     # Stem cache preserved at stem_cache_dir for faster re-renders
     print("✅ Professional Mashup Creation Successful!")
     return output_path
@@ -703,20 +710,11 @@ def create_pallavi_medley(tracks_analysis, output_dir, target_lufs=-14.0):
     final_audio = apply_master_bus_glue(final_audio, sr, target_lufs)
 
     # Export
-    os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_filename = f"pallavi_medley_{timestamp}.mp3"
-    output_path = os.path.join(output_dir, output_filename)
+    base_name = f"pallavi_medley_{timestamp}"
+    output_path = export_audio(final_audio, sr, output_dir, base_name, "high")
 
-    tmp_wav = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
-    try:
-        sf.write(tmp_wav.name, final_audio, sr)
-        audio_segment = AudioSegment.from_wav(tmp_wav.name)
-        audio_segment.export(output_path, format="mp3", bitrate="320k")
-    finally:
-        os.unlink(tmp_wav.name)
-
-    print(f"✅ Pallavi Medley created: {output_filename} ({len(final_audio)/sr:.1f}s)")
+    print(f"✅ Pallavi Medley created: {os.path.basename(output_path)} ({len(final_audio)/sr:.1f}s)")
     return output_path
 
 
