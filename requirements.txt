@@ -6,6 +6,7 @@ pydub
 demucs
 fastapi
 uvicorn
+python-multipart
 pydantic
 yt-dlp
 pyloudnorm

@@ -25,7 +25,11 @@ from audio_utils import export_audio
 
 # Try to import Pedalboard for Studio-Grade Mastering
 try:
-    from pedalboard import Pedalboard, Compressor, PeakLimiter, HighpassFilter, Delay
+    from pedalboard import Pedalboard, Compressor, HighpassFilter, Delay
+    try:
+        from pedalboard import Limiter
+    except ImportError:  # pre-0.9 releases shipped the class as PeakLimiter
+        from pedalboard import PeakLimiter as Limiter
     HAS_PEDALBOARD = True
 except ImportError:
     HAS_PEDALBOARD = False
@@ -169,7 +173,7 @@ def apply_master_bus_glue(y, sr, target_lufs=-14.0):
         board = Pedalboard([
             HighpassFilter(cutoff_frequency_hz=30), # Remove subsonic rumble
             Compressor(threshold_db=-14.0, ratio=2.5, attack_ms=15.0, release_ms=150.0),
-            PeakLimiter(threshold_db=-0.3)
+            Limiter(threshold_db=-0.3, release_ms=100.0)
         ])
         y_2d = np.expand_dims(y, axis=0)
         processed = board(y_2d, sr, reset=True)

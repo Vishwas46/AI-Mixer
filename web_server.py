@@ -75,6 +75,10 @@ from sandalwood_mixer import (
     create_sandalwood_mashup,
     create_pallavi_medley,
 )
+from mashup_lab import (
+    create_lab_mashup,
+    STYLE_PRESETS as MASHUP_LAB_STYLES,
+)
 from sandalwood_enhancements import (
     validate_audio_file,
     batch_validate_audio,
@@ -263,6 +267,17 @@ class _LogCapture(io.TextIOBase):
             self._task["progress"] = 90
         elif "transition recommendation" in lower:
             self._task["progress"] = 95
+        # Mashup Lab stages (run after analysis)
+        elif "separating stems" in lower:
+            self._task["progress"] = 70
+        elif "tempo locking" in lower:
+            self._task["progress"] = 78
+        elif "key locking" in lower:
+            self._task["progress"] = 82
+        elif "placing vocal" in lower:
+            self._task["progress"] = 86
+        elif "sidechain" in lower:
+            self._task["progress"] = 92
         elif "complete" in lower or "exporting" in lower:
             self._task["progress"] = 98
 
@@ -404,6 +419,20 @@ class SandalwoodCreateRequest(BaseModel):
     def validate_plan_id(cls, v):
         if '..' in v or '/' in v:
             raise ValueError('Invalid plan_id')
+        return v
+
+
+class MashupLabRequest(BaseModel):
+    """Request for a Mashup Lab creation: one song's voice over another's music."""
+    vocal_track: str = Field(..., min_length=1, max_length=255)
+    backing_track: str = Field(..., min_length=1, max_length=255)
+    style: str = Field("divine", pattern="^(divine|cocktail_party|club_remix)$")
+
+    @field_validator('vocal_track', 'backing_track')
+    @classmethod
+    def validate_no_traversal(cls, v):
+        if '..' in v or v.startswith('/'):
+            raise ValueError('Invalid filename')
         return v
 
 
@@ -1336,6 +1365,80 @@ async def create_pallavi_medley_endpoint(req: PallaviMedleyRequest):
 
 
 # ------------------------------------------------------------------
+# Mashup Lab: vocal-over-instrumental mashups (V3 signature feature)
+# ------------------------------------------------------------------
+@app.post("/api/mashup/lab")
+async def mashup_lab_endpoint(req: MashupLabRequest):
+    """
+    Create a vocal-over-instrumental mashup: the VOICE of one song laid over
+    the MUSIC of another, tempo-locked, key-locked and beat-aligned.
+    Styles: divine | cocktail_party | club_remix
+    """
+    vocal_path = validate_safe_path(SONGS_DIR, req.vocal_track)
+    backing_path = validate_safe_path(SONGS_DIR, req.backing_track)
+    if not os.path.isfile(vocal_path):
+        raise HTTPException(status_code=404, detail=f"Song file not found: {req.vocal_track}")
+    if not os.path.isfile(backing_path):
+        raise HTTPException(status_code=404, detail=f"Song file not found: {req.backing_track}")
+    if req.vocal_track == req.backing_track:
+        raise HTTPException(status_code=400, detail="Pick two different songs for a mashup")
+
+    task = _create_task("mashup_lab", 2)
+
+    def _do_lab_mashup():
+        venv_path = os.environ.get("VIRTUAL_ENV") or os.path.join(BASE_DIR, "venv")
+
+        cache = _load_analysis_cache()
+        analyses = {}
+        for idx, (role, fname, fpath) in enumerate(
+                [("voice", req.vocal_track, vocal_path),
+                 ("music", req.backing_track, backing_path)]):
+            cached = cache.get(fpath)
+            if cached and _is_deep_analysis(cached):
+                print(f"[{idx + 1}/2] Using cached deep analysis ({role}): {fname}")
+                analyses[role] = cached
+            else:
+                print(f"[{idx + 1}/2] Deep analysis ({role}): {fname}")
+                analyses[role] = analyze_kannada_track_for_mashup(fpath, venv_path)
+                cache[fpath] = analyses[role]
+            task["progress"] = 30 * (idx + 1)
+        _save_analysis_cache(cache)
+
+        task["progress"] = 65
+        result = create_lab_mashup(
+            vocal_analysis=analyses["voice"],
+            backing_analysis=analyses["music"],
+            output_dir=OUTPUT_DIR,
+            style=req.style,
+            venv_path=venv_path,
+        )
+        task["progress"] = 98
+
+        print(f"Mashup Lab complete! Audio: {result['output_filename']}")
+        return {
+            "output_filename": result["output_filename"],
+            "style": result["style"],
+            "separator_used": result["separator_used"],
+            "degraded": result["degraded"],
+            "target_bpm": result["target_bpm"],
+            "semitone_shift": result["semitone_shift"],
+            "tempo_ratio": result["tempo_ratio"],
+            "warnings": result["warnings"],
+            "vocal_track": req.vocal_track,
+            "backing_track": req.backing_track,
+        }
+
+    _run_in_background(task, _do_lab_mashup)
+    return {
+        "task_id": task["task_id"],
+        "status": "pending",
+        "vocal_track": req.vocal_track,
+        "backing_track": req.backing_track,
+        "style": req.style,
+    }
+
+
+# ------------------------------------------------------------------
 # List output files
 # ------------------------------------------------------------------
 @app.get("/api/outputs")
@@ -2105,12 +2208,15 @@ async def list_features():
     List all available features and their status.
     """
     return {
-        "version": "2.3.0",
+        "version": "3.0.0",
         "features": {
             "core": {
-                "quick_mashup": True,
-                "dj_set": True,
                 "sandalwood_mashup": True,
+                "mashup_lab": {
+                    "styles": list(MASHUP_LAB_STYLES.keys()),
+                },
+                "quick_mashup": True,  # Advanced page
+                "dj_set": True,  # Advanced page
             },
             "analysis": {
                 "17_step_analysis": True,
