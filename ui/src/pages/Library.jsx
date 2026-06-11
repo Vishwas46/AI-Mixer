@@ -48,13 +48,11 @@ function Library() {
     formData.append('file', file)
 
     try {
-      const res = await fetch('/api/songs/upload', {
+      await apiFetch('/api/songs/upload', {
         method: 'POST',
         body: formData,
       })
-      if (res.ok) {
-        fetchSongs()
-      }
+      fetchSongs()
     } catch (err) {
       console.error('Upload failed:', err)
     } finally {
@@ -67,12 +65,10 @@ function Library() {
 
   const analyzeKannada = async (filename) => {
     try {
-      const res = await fetch('/api/analyze/kannada', {
+      const data = await apiFetch('/api/analyze/kannada', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename }),
       })
-      const data = await res.json()
       setAnalyzingId(data.task_id)
     } catch (err) {
       console.error('Analysis failed:', err)

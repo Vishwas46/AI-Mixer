@@ -111,11 +111,16 @@ def main():
         check(f"lab/{style}: peak <= 0.999", stats["peak"] <= 0.999,
               f"peak {stats['peak']:.3f}")
         if stats["lufs"] is not None:
-            check(f"lab/{style}: LUFS in [-20, -8]",
-                  -20 <= stats["lufs"] <= -8, f"{stats['lufs']:.1f} LUFS")
+            check(f"lab/{style}: LUFS in [-17, -10]",
+                  -17 <= stats["lufs"] <= -10, f"{stats['lufs']:.1f} LUFS")
         check(f"lab/{style}: placements > 0", len(result["placements"]) > 0,
               f"{len(result['placements'])} phrases, separator={result['separator_used']}, "
               f"degraded={result['degraded']}")
+        if result["placements"]:
+            bar_sec = 4 * 60.0 / backing_analysis["bpm"]
+            first_entry = result["placements"][0]["timeline_start_sec"]
+            check(f"lab/{style}: vocal enters after an intro",
+                  first_entry >= 2 * bar_sec, f"first entry {first_entry:.1f}s")
 
     print("\n[4/4] Nonstop sandalwood mix...")
     from sandalwood_mixer import create_sandalwood_mashup
@@ -132,7 +137,7 @@ def main():
         check("nonstop: duration > 30s", stats["duration"] > 30, f"{stats['duration']:.1f}s")
         check("nonstop: no NaN", not stats["has_nan"])
         if stats["lufs"] is not None:
-            check("nonstop: LUFS in [-20, -8]", -20 <= stats["lufs"] <= -8,
+            check("nonstop: LUFS in [-17, -10]", -17 <= stats["lufs"] <= -10,
                   f"{stats['lufs']:.1f} LUFS")
     except Exception as exc:
         traceback.print_exc()

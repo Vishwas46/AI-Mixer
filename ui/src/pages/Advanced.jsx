@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion as Motion } from 'framer-motion'
 import { Disc3, Music2, Zap, Play } from 'lucide-react'
 import TaskProgress from '../components/TaskProgress'
@@ -24,6 +25,7 @@ const MODES = [
 const DJ_STYLES = ['relaxed', 'energetic', 'pro']
 
 function Advanced() {
+  const navigate = useNavigate()
   const [songs, setSongs] = useState([])
   const [selectedMode, setSelectedMode] = useState('single')
   const [selectedSongs, setSelectedSongs] = useState([])
@@ -232,7 +234,7 @@ function Advanced() {
             </p>
             <button
               className="btn btn-primary"
-              onClick={() => window.location.href = '/results'}
+              onClick={() => navigate('/results')}
             >
               Go to My Mixes
             </button>

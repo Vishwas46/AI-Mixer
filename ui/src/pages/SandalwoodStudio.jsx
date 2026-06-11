@@ -422,13 +422,12 @@ export default function SandalwoodStudio() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [tracks, setTracks] = useState([]);
-  const [selectedTracks, setSelectedTracks] = useState([]);
+  const [selectedNames, setSelectedNames] = useState([]);
   const [singerProfiles, setSingerProfiles] = useState([]);
   const [eraProfiles, setEraProfiles] = useState([]);
   const [selectedStyle, setSelectedStyle] = useState('energetic');
   const [duration, setDuration] = useState(10);
   const [isCreating, setIsCreating] = useState(false);
-  const [, setTaskId] = useState(null);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState(null);
   const [customCuePoints, setCustomCuePoints] = useState({});
@@ -436,6 +435,13 @@ export default function SandalwoodStudio() {
   const [planId, setPlanId] = useState(null);
   const [groupStyles, setGroupStyles] = useState({});
   const [isPlanLoading, setIsPlanLoading] = useState(false);
+
+  // Selection is stored as filenames and resolved against the live track
+  // list, so refreshes (uploads, YouTube imports, analysis updates) that
+  // rebuild the track objects can't orphan the selection.
+  const selectedTracks = selectedNames
+    .map(name => tracks.find(t => t.name === name))
+    .filter(Boolean);
 
   const steps = mixType === 'lab'
     ? ['Pick Songs', 'Style', 'Create', 'Results']
@@ -628,7 +634,6 @@ export default function SandalwoodStudio() {
       });
       const data = await res.json();
       if (data.task_id) {
-        setTaskId(data.task_id);
         pollTask(data.task_id, (result) => {
           setResult(result);
           setIsCreating(false);
@@ -645,7 +650,7 @@ export default function SandalwoodStudio() {
   };
 
   const swapLabRoles = () => {
-    setSelectedTracks(prev => (prev.length === 2 ? [prev[1], prev[0]] : prev));
+    setSelectedNames(prev => (prev.length === 2 ? [prev[1], prev[0]] : prev));
   };
 
   const handleCuePointUpdate = (trackName, cueType, time) => {
@@ -675,7 +680,6 @@ export default function SandalwoodStudio() {
       const data = await res.json();
 
       if (data.task_id) {
-        setTaskId(data.task_id);
         pollTask(data.task_id, (result) => {
           setResult(result);
           setIsCreating(false);
@@ -703,7 +707,6 @@ export default function SandalwoodStudio() {
       const data = await res.json();
 
       if (data.task_id) {
-        setTaskId(data.task_id);
         pollTask(data.task_id, (result) => {
           setResult(result);
           setIsCreating(false);
@@ -730,7 +733,6 @@ export default function SandalwoodStudio() {
       });
       const data = await res.json();
       if (data.task_id) {
-        setTaskId(data.task_id);
         pollTask(data.task_id, (result) => {
           setPlanData(result);
           setPlanId(result.plan_id);
@@ -767,7 +769,6 @@ export default function SandalwoodStudio() {
       });
       const data = await res.json();
       if (data.task_id) {
-        setTaskId(data.task_id);
         pollTask(data.task_id, (result) => {
           setResult(result);
           setIsCreating(false);
@@ -817,7 +818,7 @@ export default function SandalwoodStudio() {
           <div className="mix-type-cards">
             <Motion.button
               className="mix-type-card glass-card"
-              onClick={() => { setMixType('lab'); setCurrentStep(0); setSelectedTracks([]); }}
+              onClick={() => { setMixType('lab'); setCurrentStep(0); setSelectedNames([]); }}
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
             >
@@ -829,7 +830,7 @@ export default function SandalwoodStudio() {
             </Motion.button>
             <Motion.button
               className="mix-type-card glass-card"
-              onClick={() => { setMixType('nonstop'); setCurrentStep(0); setSelectedTracks([]); }}
+              onClick={() => { setMixType('nonstop'); setCurrentStep(0); setSelectedNames([]); }}
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
             >
@@ -899,17 +900,18 @@ export default function SandalwoodStudio() {
                 <div className="tracks-list">
                   <AnimatePresence>
                     {tracks.map(track => {
-                      const roleIndex = selectedTracks.indexOf(track);
+                      const roleIndex = selectedNames.indexOf(track.name);
                       return (
                         <Motion.div
                           key={track.name}
                           className={`track-item ${roleIndex >= 0 ? 'selected' : ''}`}
                           onClick={() => {
                             if (roleIndex >= 0) {
-                              setSelectedTracks(prev => prev.filter(t => t !== track));
+                              setSelectedNames(prev => prev.filter(n => n !== track.name));
                             } else {
-                              setSelectedTracks(prev =>
-                                prev.length >= 2 ? [prev[1], track] : [...prev, track]);
+                              // 3rd pick replaces the Music slot; Voice stays put
+                              setSelectedNames(prev =>
+                                prev.length >= 2 ? [prev[0], track.name] : [...prev, track.name]);
                             }
                           }}
                           layout
@@ -956,7 +958,7 @@ export default function SandalwoodStudio() {
               <div className="step-actions">
                 <Motion.button
                   className="btn btn-secondary"
-                  onClick={() => { setMixType(null); setSelectedTracks([]); }}
+                  onClick={() => { setMixType(null); setSelectedNames([]); }}
                   whileHover={{ scale: 1.02 }}
                 >
                   Back
@@ -1136,12 +1138,12 @@ export default function SandalwoodStudio() {
                       {tracks.map(track => (
                         <Motion.div
                           key={track.name}
-                          className={`track-item ${selectedTracks.includes(track) ? 'selected' : ''}`}
+                          className={`track-item ${selectedNames.includes(track.name) ? 'selected' : ''}`}
                           onClick={() => {
-                            if (selectedTracks.includes(track)) {
-                              setSelectedTracks(prev => prev.filter(t => t !== track));
+                            if (selectedNames.includes(track.name)) {
+                              setSelectedNames(prev => prev.filter(n => n !== track.name));
                             } else {
-                              setSelectedTracks(prev => [...prev, track]);
+                              setSelectedNames(prev => [...prev, track.name]);
                             }
                           }}
                           layout
@@ -1151,7 +1153,7 @@ export default function SandalwoodStudio() {
                           whileHover={{ backgroundColor: 'rgba(255,255,255,0.05)' }}
                         >
                           <div className="track-checkbox">
-                            {selectedTracks.includes(track) && <Check size={14} />}
+                            {selectedNames.includes(track.name) && <Check size={14} />}
                           </div>
                           <div className="track-details">
                             <span className="track-name">{track.name}</span>
@@ -1599,7 +1601,7 @@ export default function SandalwoodStudio() {
                     onClick={() => {
                       setMixType(null);
                       setCurrentStep(0);
-                      setSelectedTracks([]);
+                      setSelectedNames([]);
                       setResult(null);
                       setPlanData(null);
                       setPlanId(null);

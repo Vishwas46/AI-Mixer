@@ -236,39 +236,58 @@ class _LogCapture(io.TextIOBase):
     def _try_update_progress(self, line: str):
         """Try to infer progress from common log patterns."""
         lower = line.lower()
-        # Step-based progress updates based on analysis stages
-        if "base analysis" in lower:
-            self._task["progress"] = 10
-        elif "vocal analysis" in lower:
-            self._task["progress"] = 20
-        elif "beat grid" in lower:
-            self._task["progress"] = 30
-        elif "tala detection" in lower:
-            self._task["progress"] = 40
-        elif "scale" in lower and "analysis" in lower:
-            self._task["progress"] = 45
-        elif "hook" in lower and "drop" in lower:
-            self._task["progress"] = 50
-        elif "harmonic rhythm" in lower:
-            self._task["progress"] = 55
-        elif "spectral analysis" in lower:
-            self._task["progress"] = 60
-        elif "percussion" in lower:
-            self._task["progress"] = 65
-        elif "section classification" in lower:
-            self._task["progress"] = 70
-        elif "emotional" in lower:
-            self._task["progress"] = 75
-        elif "phrase boundary" in lower:
-            self._task["progress"] = 80
-        elif "vocal-free" in lower:
-            self._task["progress"] = 85
-        elif "cue point" in lower:
-            self._task["progress"] = 90
-        elif "transition recommendation" in lower:
-            self._task["progress"] = 95
-        # Mashup Lab stages (run after analysis)
-        elif "separating stems" in lower:
+        # Mashup Lab tasks set coarse analysis milestones explicitly (30/60),
+        # so the per-stage analysis keywords below would make the bar jump
+        # backwards once the mixing phase starts — skip them for those tasks.
+        if self._task.get("type") != "mashup_lab":
+            # Step-based progress updates based on analysis stages
+            if "base analysis" in lower:
+                self._task["progress"] = 10
+                return
+            elif "vocal analysis" in lower:
+                self._task["progress"] = 20
+                return
+            elif "beat grid" in lower:
+                self._task["progress"] = 30
+                return
+            elif "tala detection" in lower:
+                self._task["progress"] = 40
+                return
+            elif "scale" in lower and "analysis" in lower:
+                self._task["progress"] = 45
+                return
+            elif "hook" in lower and "drop" in lower:
+                self._task["progress"] = 50
+                return
+            elif "harmonic rhythm" in lower:
+                self._task["progress"] = 55
+                return
+            elif "spectral analysis" in lower:
+                self._task["progress"] = 60
+                return
+            elif "percussion" in lower:
+                self._task["progress"] = 65
+                return
+            elif "section classification" in lower:
+                self._task["progress"] = 70
+                return
+            elif "emotional" in lower:
+                self._task["progress"] = 75
+                return
+            elif "phrase boundary" in lower:
+                self._task["progress"] = 80
+                return
+            elif "vocal-free" in lower:
+                self._task["progress"] = 85
+                return
+            elif "cue point" in lower:
+                self._task["progress"] = 90
+                return
+            elif "transition recommendation" in lower:
+                self._task["progress"] = 95
+                return
+        # Mashup Lab mixing stages (run after the analysis phase)
+        if "separating stems" in lower:
             self._task["progress"] = 70
         elif "tempo locking" in lower:
             self._task["progress"] = 78

@@ -102,7 +102,7 @@ function Results() {
         <div className="empty-state glass-card">
           <Headphones size={48} className="empty-icon" />
           <h3>No mixes yet</h3>
-          <p>Go to Studio and create your first mashup</p>
+          <p>Create your first mashup in the Sandalwood studio</p>
         </div>
       ) : (
         <div className="outputs-grid">
