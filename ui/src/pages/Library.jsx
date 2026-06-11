@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion as Motion, AnimatePresence } from 'framer-motion'
 import { Upload, Music, Clock, Key, Activity, RefreshCw, Search, X, ChevronDown, ChevronUp } from 'lucide-react'
 import TaskProgress from '../components/TaskProgress'
 import './Library.css'
@@ -157,7 +157,7 @@ function Library() {
         <div className="songs-list">
           <AnimatePresence>
             {filteredSongs.map((song, index) => (
-              <motion.div
+              <Motion.div
                 key={song.filename}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -220,7 +220,7 @@ function Library() {
 
                 <AnimatePresence>
                   {expandedSong === song.filename && song.analysis && (
-                    <motion.div
+                    <Motion.div
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
@@ -298,10 +298,10 @@ function Library() {
                           </div>
                         </div>
                       )}
-                    </motion.div>
+                    </Motion.div>
                   )}
                 </AnimatePresence>
-              </motion.div>
+              </Motion.div>
             ))}
           </AnimatePresence>
         </div>

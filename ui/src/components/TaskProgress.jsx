@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { CheckCircle, AlertCircle, Loader } from 'lucide-react'
+import { apiUrl } from '../api'
 import './TaskProgress.css'
 
 function TaskProgress({ taskId, onComplete }) {
@@ -8,11 +9,29 @@ function TaskProgress({ taskId, onComplete }) {
   const logsEndRef = useRef(null)
   const eventSourceRef = useRef(null)
 
+  const pollTask = async () => {
+    try {
+      const res = await fetch(apiUrl(`/api/tasks/${taskId}`))
+      const data = await res.json()
+      setTask(data)
+      if (data.log) {
+        setLogs(data.log)
+      }
+      if (data.status !== 'completed' && data.status !== 'failed') {
+        setTimeout(pollTask, 1000)
+      } else if (onComplete) {
+        onComplete(data)
+      }
+    } catch (err) {
+      console.error('Poll error:', err)
+    }
+  }
+
   useEffect(() => {
     if (!taskId) return
 
     // Use SSE for live updates
-    const eventSource = new EventSource(`/api/tasks/${taskId}/stream`)
+    const eventSource = new EventSource(apiUrl(`/api/tasks/${taskId}/stream`))
     eventSourceRef.current = eventSource
 
     eventSource.onmessage = (event) => {
@@ -43,24 +62,6 @@ function TaskProgress({ taskId, onComplete }) {
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
-
-  const pollTask = async () => {
-    try {
-      const res = await fetch(`/api/tasks/${taskId}`)
-      const data = await res.json()
-      setTask(data)
-      if (data.log) {
-        setLogs(data.log)
-      }
-      if (data.status !== 'completed' && data.status !== 'failed') {
-        setTimeout(pollTask, 1000)
-      } else if (onComplete) {
-        onComplete(data)
-      }
-    } catch (err) {
-      console.error('Poll error:', err)
-    }
-  }
 
   if (!task) {
     return (

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion as Motion, AnimatePresence } from 'framer-motion'
 import { Headphones, Download, Trash2, RefreshCw, Clock, FileAudio } from 'lucide-react'
 import AudioPlayer from '../components/AudioPlayer'
 import './Results.css'
@@ -75,7 +75,7 @@ function Results() {
 
       {/* Audio Player Area */}
       {selectedOutput && (
-        <motion.div
+        <Motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           className="player-area"
@@ -84,7 +84,7 @@ function Results() {
             src={`/remix_outputs/${selectedOutput.filename}`}
             title={selectedOutput.filename}
           />
-        </motion.div>
+        </Motion.div>
       )}
 
       {/* Outputs List */}
@@ -103,7 +103,7 @@ function Results() {
         <div className="outputs-grid">
           <AnimatePresence>
             {outputs.map((output, index) => (
-              <motion.div
+              <Motion.div
                 key={output.filename}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -141,7 +141,7 @@ function Results() {
                     <Download size={18} />
                   </button>
                 </div>
-              </motion.div>
+              </Motion.div>
             ))}
           </AnimatePresence>
         </div>

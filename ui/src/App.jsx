@@ -1,8 +1,7 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import Navbar from './components/Navbar'
-import Home from './pages/Home'
 import Library from './pages/Library'
-import Studio from './pages/Studio'
+import Advanced from './pages/Advanced'
 import SandalwoodStudio from './pages/SandalwoodStudio'
 import Results from './pages/Results'
 import './App.css'
@@ -13,11 +12,13 @@ function App() {
       <Navbar />
       <main className="main-content">
         <Routes>
-          <Route path="/" element={<Home />} />
+          <Route path="/" element={<SandalwoodStudio />} />
           <Route path="/library" element={<Library />} />
-          <Route path="/studio" element={<Studio />} />
-          <Route path="/sandalwood" element={<SandalwoodStudio />} />
           <Route path="/results" element={<Results />} />
+          <Route path="/advanced" element={<Advanced />} />
+          {/* Legacy routes */}
+          <Route path="/sandalwood" element={<Navigate to="/" replace />} />
+          <Route path="/studio" element={<Navigate to="/advanced" replace />} />
         </Routes>
       </main>
     </div>
