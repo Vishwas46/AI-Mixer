@@ -39,8 +39,14 @@ function Advanced() {
 
   const fetchSongs = async () => {
     try {
-      const data = await apiFetch('/api/songs')
-      const analyzed = (data.songs || []).filter(s => s.analysis)
+      const [songsData, analysisData] = await Promise.all([
+        apiFetch('/api/songs'),
+        apiFetch('/api/analysis/all'),
+      ])
+      const analyses = analysisData.analyses || {}
+      const analyzed = (songsData.songs || [])
+        .map(s => ({ ...s, filename: s.name, analysis: analyses[s.name] || null }))
+        .filter(s => s.analysis)
       setSongs(analyzed)
     } catch (err) {
       console.error('Failed to fetch songs:', err)

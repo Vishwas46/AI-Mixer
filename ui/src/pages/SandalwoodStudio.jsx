@@ -452,9 +452,18 @@ export default function SandalwoodStudio() {
 
   const fetchSongs = async () => {
     try {
-      const res = await fetch(apiUrl('/api/songs'));
-      const data = await res.json();
-      setTracks(data.songs || []);
+      // Merge the file list with cached analyses so previously analyzed
+      // tracks show as Ready without re-running the 17-step analysis
+      const [songsRes, analysisRes] = await Promise.all([
+        fetch(apiUrl('/api/songs')),
+        fetch(apiUrl('/api/analysis/all')),
+      ]);
+      const data = await songsRes.json();
+      const analyses = (await analysisRes.json()).analyses || {};
+      setTracks((data.songs || []).map(s => ({
+        ...s,
+        analysis: s.analysis || analyses[s.name] || null,
+      })));
     } catch (err) {
       console.error('Failed to fetch songs:', err);
     }

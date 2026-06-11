@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { motion as Motion, AnimatePresence } from 'framer-motion'
 import { Upload, Music, Clock, Key, Activity, RefreshCw, Search, X, ChevronDown, ChevronUp } from 'lucide-react'
 import TaskProgress from '../components/TaskProgress'
+import { apiFetch } from '../api'
 import './Library.css'
 
 function Library() {
@@ -15,9 +16,18 @@ function Library() {
 
   const fetchSongs = async () => {
     try {
-      const res = await fetch('/api/songs')
-      const data = await res.json()
-      setSongs(data.songs || [])
+      // /api/songs lists files (name, has_analysis); analysis details live
+      // in the cache exposed by /api/analysis/all — merge the two here
+      const [songsData, analysisData] = await Promise.all([
+        apiFetch('/api/songs'),
+        apiFetch('/api/analysis/all'),
+      ])
+      const analyses = analysisData.analyses || {}
+      setSongs((songsData.songs || []).map(s => ({
+        ...s,
+        filename: s.name,
+        analysis: analyses[s.name] || null,
+      })))
     } catch (err) {
       console.error('Failed to fetch songs:', err)
     } finally {
