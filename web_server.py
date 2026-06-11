@@ -717,6 +717,27 @@ async def upload_song(file: UploadFile = File(...)):
 
 
 # ------------------------------------------------------------------
+# Get all cached analyses (must be registered before /{filename})
+# ------------------------------------------------------------------
+@app.get("/api/analysis/all")
+async def get_all_analysis():
+    """Get all cached analysis data."""
+    cache = _load_analysis_cache()
+
+    # Filter to only include files in SONGS_DIR
+    song_analyses = {}
+    for path, analysis in cache.items():
+        if SONGS_DIR in path:
+            filename = os.path.basename(path)
+            song_analyses[filename] = analysis
+
+    return {
+        "count": len(song_analyses),
+        "analyses": song_analyses,
+    }
+
+
+# ------------------------------------------------------------------
 # Get cached analysis for a file
 # ------------------------------------------------------------------
 @app.get("/api/analysis/{filename}")
@@ -1824,24 +1845,6 @@ async def export_for_dj_software(req: ExportRequest):
 # ------------------------------------------------------------------
 # Get all analysis data (for compatibility calculations)
 # ------------------------------------------------------------------
-@app.get("/api/analysis/all")
-async def get_all_analysis():
-    """Get all cached analysis data."""
-    cache = _load_analysis_cache()
-
-    # Filter to only include files in SONGS_DIR
-    song_analyses = {}
-    for path, analysis in cache.items():
-        if SONGS_DIR in path:
-            filename = os.path.basename(path)
-            song_analyses[filename] = analysis
-
-    return {
-        "count": len(song_analyses),
-        "analyses": song_analyses,
-    }
-
-
 # ---------------------------------------------------------------------------
 # SANDALWOOD ENHANCEMENTS API
 # ---------------------------------------------------------------------------
