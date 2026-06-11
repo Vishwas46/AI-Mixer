@@ -178,11 +178,13 @@ _mashup_plans: dict[str, dict] = {}
 _plans_lock = threading.Lock()
 
 
-def _create_task() -> dict:
+def _create_task(task_type: str = "task", total_items: int = 1) -> dict:
     """Create a new task entry and return it."""
     task_id = str(uuid.uuid4())
     task = {
         "task_id": task_id,
+        "type": task_type,
+        "total_items": total_items,
         "status": "pending",
         "progress": 0,
         "log": [],
