@@ -50,6 +50,10 @@ except ImportError:
 
 def separate_stems_demucs(file_path, output_dir, venv_path=None):
     """Run Demucs to separate audio into 4 stems: Vocals, Drums, Bass, Other."""
+    from stem_separation import stem_separation_disabled
+    if stem_separation_disabled():
+        print("  [Stem Separation] Disabled (AIMIXER_STEM_QUALITY=none) — using master audio.")
+        return None
     print(f"  [Stem Separation] Running Demucs on {os.path.basename(file_path)}...")
     model = "htdemucs_ft"
     demucs_cmd = os.path.join(venv_path, 'bin', 'demucs') if venv_path else "demucs"

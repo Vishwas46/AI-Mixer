@@ -4,8 +4,10 @@
 # License: MIT License
 # -----------------------------------------------------------------------------
 # tests/test_pipeline.py
-# End-to-end pipeline check on synthetic songs (no network, no model weights
-# required — exercises the graceful-degradation paths when those are absent).
+# End-to-end pipeline check on synthetic songs. Runs fully offline: it defaults
+# AIMIXER_STEM_QUALITY=none so no Demucs/RoFormer weights are downloaded and no
+# network is touched, exercising the graceful-degradation paths. Export
+# AIMIXER_STEM_QUALITY=fast|auto|best beforehand to test real separation.
 #
 #   venv/bin/python tests/test_pipeline.py
 #
@@ -60,9 +62,24 @@ def audio_stats(path):
 
 
 def main():
+    # Run offline by default: skip neural separation everywhere (no weights, no
+    # network) so the suite exercises the graceful-degradation paths. Override
+    # by exporting AIMIXER_STEM_QUALITY=fast|auto|best to test real separation.
+    os.environ.setdefault("AIMIXER_STEM_QUALITY", "none")
+
+    # Measure DSP stats on the lossless WAV export, not a lossy MP3 round-trip.
+    # MP3 inter-sample overshoot pushes the decoded peak above 1.0 even though
+    # our master is limited to <=0.985 — so an MP3 peak check tests the codec,
+    # not our DSP (and would depend on libsndfile's MP3 decode). Forcing WAV
+    # keeps every assertion on the true mastered signal, including the 16-bit
+    # export true-peak guard this suite is meant to protect.
+    import audio_utils
+    audio_utils.has_ffmpeg = lambda: False
+
     venv_path = os.environ.get("VIRTUAL_ENV", os.path.abspath("./venv"))
     print("=" * 70)
-    print("PIPELINE TEST — synthetic songs")
+    print("PIPELINE TEST — synthetic songs "
+          f"(AIMIXER_STEM_QUALITY={os.environ['AIMIXER_STEM_QUALITY']})")
     print("=" * 70)
 
     print("\n[1/4] Generating synthetic songs...")

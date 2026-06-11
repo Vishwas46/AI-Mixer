@@ -10,10 +10,14 @@
 #                  package (SDX23-winning family, ~12.9 dB SDR vocals).
 #                  Install with: pip install -r requirements-quality.txt
 #   Tier 2 "fast": Demucs htdemucs_ft 4-stem CLI (project default).
-#   Tier 3:        None — callers fall back to master-channel mixing.
+#   Tier 3 "none": neural separation off — every caller (RoFormer, Demucs and
+#                  the analyzer's vocal-region pass) degrades to master-channel
+#                  mixing. No weights, no network. For offline / low-resource
+#                  runs and the offline test suite.
 #
-# Select via env var AIMIXER_STEM_QUALITY=best|fast|auto (default: auto).
+# Select via env var AIMIXER_STEM_QUALITY=best|fast|auto|none (default: auto).
 # "auto" uses RoFormer when the package is installed, otherwise Demucs.
+# "none" (alias "off") skips separation entirely.
 # -----------------------------------------------------------------------------
 
 import os
@@ -28,7 +32,19 @@ _roformer_separator = None  # cached instance — model load is expensive
 def get_stem_quality():
     """Read the requested separation quality tier from the environment."""
     quality = os.environ.get("AIMIXER_STEM_QUALITY", "auto").strip().lower()
-    return quality if quality in ("best", "fast", "auto") else "auto"
+    if quality == "off":  # friendly alias
+        quality = "none"
+    return quality if quality in ("best", "fast", "auto", "none") else "auto"
+
+
+def stem_separation_disabled():
+    """True when neural separation is switched off (AIMIXER_STEM_QUALITY=none).
+
+    Lets every separation entry point — RoFormer, Demucs and the analyzer's
+    vocal-region pass — degrade to master-channel mixing with no model weights
+    and no network. Used for offline / low-resource runs and the offline tests.
+    """
+    return get_stem_quality() == "none"
 
 
 def roformer_available():
@@ -98,6 +114,8 @@ def separate_stems_best(file_path, output_dir, venv_path=None, quality=None):
       or None when no engine could produce stems.
     """
     quality = quality or get_stem_quality()
+    if quality == "none":
+        return None
 
     if quality in ("best", "auto"):
         stems = separate_vocals_roformer(file_path, os.path.join(output_dir, "roformer"))

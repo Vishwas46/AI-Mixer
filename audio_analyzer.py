@@ -102,6 +102,11 @@ def analyze_vocal_presence(file_path, venv_path):
     Separates a track and analyzes the vocal stem to find regions with vocals.
     Returns a list of dictionaries with 'start' and 'end' times for vocal regions.
     """
+    from stem_separation import stem_separation_disabled
+    if stem_separation_disabled():
+        print(f"  [Vocal Regions] Separation disabled (AIMIXER_STEM_QUALITY=none) — "
+              f"skipping for {os.path.basename(file_path)}.")
+        return []
     print(f"Analyzing {os.path.basename(file_path)} for vocal presence and regions...")
     tmp_dir = tempfile.mkdtemp(prefix="vocal_check_")
     try:

@@ -50,7 +50,7 @@ and the highest-quality time-stretch/pitch-shift.
 
 ```bash
 pip install -r requirements-quality.txt   # BS-RoFormer via audio-separator (~600MB one-time model download)
-export AIMIXER_STEM_QUALITY=best          # or "auto" (default) / "fast"
+export AIMIXER_STEM_QUALITY=best          # auto (default) | fast | best | none (offline, no separation)
 ```
 
 ### 4. Run it
@@ -95,6 +95,9 @@ The old Quick Mashup and DJ Set modes still exist under **Advanced** in the navb
 
 Selection is automatic: RoFormer when installed (`AIMIXER_STEM_QUALITY=auto|best`),
 otherwise Demucs, otherwise a basic filter fallback. The result reports which tier ran.
+Set `AIMIXER_STEM_QUALITY=none` (alias `off`) to skip neural separation everywhere —
+analysis, Mashup Lab and the nonstop mix all degrade to master-channel mixing, so the
+whole pipeline runs with no model weights and no network (offline / low-resource / CI).
 
 **Evaluated, on the roadmap (not shipped):**
 - *All-In-One music structure analyzer* — trained beat/downbeat/section model; heavy
@@ -146,6 +149,7 @@ otherwise Demucs, otherwise a basic filter fallback. The result reports which ti
 | ffmpeg | Output is WAV instead of MP3 (the UI tells you) |
 | rubberband CLI | librosa time-stretch/pitch-shift fallback (formant preservation lost) |
 | Demucs/RoFormer weights (no network) | Mixes still render from the master channel; the result is flagged `degraded` with a warning |
+| `AIMIXER_STEM_QUALITY=none` set | Neural separation skipped everywhere by choice — fully offline; mixes render from the master channel, flagged `degraded` |
 | pedalboard / pyloudnorm | Peak normalization fallback |
 
 ---
@@ -224,8 +228,12 @@ Songs live in `songs/`, generated mixes in `remix_outputs/` — both git-ignored
 venv/bin/python tests/make_test_songs.py
 
 # Full pipeline: analysis sanity → 3 Mashup Lab styles → nonstop mix,
-# with loudness/clipping/duration assertions. Works offline.
+# with loudness/clipping/duration assertions. Fully offline by default —
+# defaults AIMIXER_STEM_QUALITY=none, so no model weights and no network.
 venv/bin/python tests/test_pipeline.py
+
+# To exercise real neural separation instead (downloads Demucs weights once):
+AIMIXER_STEM_QUALITY=fast venv/bin/python tests/test_pipeline.py
 ```
 
 For a real-audio test, drop two Kannada songs into `songs/` (or paste YouTube links in
