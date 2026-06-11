@@ -6,3 +6,10 @@ librosa
 pyrubberband
 pydub
 demucs
+fastapi
+uvicorn
+pydantic
+yt-dlp
+pyloudnorm
+scipy
+pedalboard

@@ -1,0 +1,236 @@
+.audio-player {
+  padding: var(--space-md);
+}
+
+.player-title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-bottom: var(--space-sm);
+  color: var(--text-secondary);
+}
+
+/* Cue Point Markers */
+.cue-markers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-sm);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.cue-marker-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--cue-color, var(--glass-border));
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cue-marker-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.cue-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cue-color, var(--primary));
+}
+
+.cue-label {
+  text-transform: uppercase;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
+/* Main Controls */
+.player-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.control-btn {
+  padding: 6px;
+  min-width: 32px;
+  height: 32px;
+}
+
+.play-btn {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Waveform */
+.waveform-wrapper {
+  flex: 1;
+  min-width: 200px;
+  position: relative;
+}
+
+.waveform-container {
+  width: 100%;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.waveform-markers {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
+.waveform-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--marker-color, #fff);
+  opacity: 0.8;
+}
+
+.waveform-marker::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -3px;
+  width: 8px;
+  height: 8px;
+  background: var(--marker-color, #fff);
+  border-radius: 50%;
+}
+
+/* Time Display */
+.time-display {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 40px;
+  text-align: center;
+}
+
+/* Volume Control */
+.volume-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.volume-slider {
+  width: 60px;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--primary);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.volume-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: var(--primary);
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+
+/* Zoom Controls */
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: var(--space-sm);
+  border-left: 1px solid var(--glass-border);
+}
+
+.zoom-level {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  min-width: 36px;
+  text-align: center;
+}
+
+/* Analysis Info Tags */
+.player-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--glass-border);
+}
+
+.info-tag {
+  font-size: 0.7rem;
+  padding: 3px 8px;
+  background: rgba(99, 102, 241, 0.15);
+  border-radius: 4px;
+  color: var(--text-secondary);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .player-controls {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .waveform-wrapper {
+    order: 10;
+    width: 100%;
+    min-width: 100%;
+    margin-top: var(--space-sm);
+  }
+
+  .zoom-controls {
+    border-left: none;
+    padding-left: 0;
+    margin-top: var(--space-xs);
+  }
+
+  .volume-control {
+    margin-top: var(--space-xs);
+  }
+}
+
+@media (max-width: 480px) {
+  .cue-markers {
+    justify-content: center;
+  }
+
+  .volume-slider {
+    width: 50px;
+  }
+}
