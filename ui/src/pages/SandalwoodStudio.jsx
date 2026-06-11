@@ -213,6 +213,51 @@ const TrackCard = ({ track, onAnalyze, isAnalyzing }) => (
   </Motion.div>
 );
 
+// Mashup Lab style presets (plain-language descriptions for non-DJs)
+const LAB_STYLES = [
+  {
+    id: 'divine',
+    name: 'Divine Mashup',
+    icon: Heart,
+    description: 'Soft devotional blend — the voice floats over the music with a gentle echo',
+  },
+  {
+    id: 'cocktail_party',
+    name: 'Cocktail Party',
+    icon: Sparkles,
+    description: 'Party style — punchy voice entries over a dance beat, DJ-mashup feel',
+  },
+  {
+    id: 'club_remix',
+    name: 'Club Remix',
+    icon: Zap,
+    description: 'Club style — filtered build-up, a drop, then the voice rides the beat',
+  },
+];
+
+// YouTube import box (shared by both mix types)
+const YouTubeImport = ({ url, onUrlChange, busy, onDownload }) => (
+  <div className="youtube-import">
+    <input
+      type="url"
+      placeholder="Paste a YouTube link to add a song..."
+      value={url}
+      onChange={(e) => onUrlChange(e.target.value)}
+      disabled={busy}
+    />
+    <Motion.button
+      className="btn btn-secondary"
+      onClick={onDownload}
+      disabled={busy || !url.trim()}
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+    >
+      {busy ? <RefreshCw size={14} className="spin" /> : <Download size={14} />}
+      {busy ? 'Downloading...' : 'Add from YouTube'}
+    </Motion.button>
+  </div>
+);
+
 // Cue point editor component
 const CuePointEditor = ({ track, cuePoints, onUpdate }) => {
   const cueTypes = [
@@ -371,6 +416,10 @@ const StyleSelector = ({ selected, onSelect }) => {
 
 // Main Sandalwood Studio component
 export default function SandalwoodStudio() {
+  const [mixType, setMixType] = useState(null); // null | 'lab' | 'nonstop'
+  const [labStyle, setLabStyle] = useState('divine');
+  const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [tracks, setTracks] = useState([]);
   const [selectedTracks, setSelectedTracks] = useState([]);
@@ -388,7 +437,10 @@ export default function SandalwoodStudio() {
   const [groupStyles, setGroupStyles] = useState({});
   const [isPlanLoading, setIsPlanLoading] = useState(false);
 
-  const steps = ['Select Tracks', 'Analyze', 'Review Plan', 'Configure', 'Results'];
+  const steps = mixType === 'lab'
+    ? ['Pick Songs', 'Style', 'Create', 'Results']
+    : ['Select Tracks', 'Analyze', 'Review Plan', 'Configure', 'Results'];
+  const resultsStep = steps.length - 1;
 
   const getGradeLetter = (percentage) => {
     if (percentage >= 80) return 'A';
@@ -494,7 +546,7 @@ export default function SandalwoodStudio() {
     }
   };
 
-  const pollTask = async (taskId, onComplete) => {
+  const pollTask = async (taskId, onComplete, onError) => {
     const poll = async () => {
       try {
         const res = await fetch(apiUrl(`/api/tasks/${taskId}`));
@@ -504,15 +556,87 @@ export default function SandalwoodStudio() {
           onComplete(data.result);
         } else if (data.status === 'failed') {
           console.error('Task failed:', data.error);
+          if (onError) onError(data.error || 'Task failed');
         } else {
           setProgress(data.progress || 0);
           setTimeout(poll, 1000);
         }
       } catch (err) {
         console.error('Poll failed:', err);
+        if (onError) onError(err.message || 'Connection lost');
       }
     };
     poll();
+  };
+
+  const handleTaskError = (message) => {
+    setIsCreating(false);
+    setIsPlanLoading(false);
+    setIsDownloading(false);
+    alert(`Something went wrong: ${message}`);
+  };
+
+  const downloadFromYouTube = async () => {
+    const url = youtubeUrl.trim();
+    if (!url) return;
+    setIsDownloading(true);
+    try {
+      const res = await fetch(apiUrl('/api/songs/youtube'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json();
+      if (data.task_id) {
+        pollTask(data.task_id, () => {
+          setYoutubeUrl('');
+          setIsDownloading(false);
+          fetchSongs();
+        }, handleTaskError);
+      } else {
+        setIsDownloading(false);
+        alert(data.detail || 'Could not start the download');
+      }
+    } catch (err) {
+      console.error('YouTube download failed:', err);
+      setIsDownloading(false);
+    }
+  };
+
+  const createLabMashup = async () => {
+    if (selectedTracks.length !== 2) return;
+    setIsCreating(true);
+    setProgress(0);
+    try {
+      const res = await fetch(apiUrl('/api/mashup/lab'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vocal_track: selectedTracks[0].name,
+          backing_track: selectedTracks[1].name,
+          style: labStyle,
+        }),
+      });
+      const data = await res.json();
+      if (data.task_id) {
+        setTaskId(data.task_id);
+        pollTask(data.task_id, (result) => {
+          setResult(result);
+          setIsCreating(false);
+          setCurrentStep(3);
+        }, handleTaskError);
+      } else {
+        setIsCreating(false);
+        alert(data.detail || 'Could not start the mashup');
+      }
+    } catch (err) {
+      console.error('Mashup Lab creation failed:', err);
+      setIsCreating(false);
+    }
+  };
+
+  const swapLabRoles = () => {
+    setSelectedTracks(prev => (prev.length === 2 ? [prev[1], prev[0]] : prev));
   };
 
   const handleCuePointUpdate = (trackName, cueType, time) => {
@@ -547,7 +671,7 @@ export default function SandalwoodStudio() {
           setResult(result);
           setIsCreating(false);
           setCurrentStep(4);
-        });
+        }, handleTaskError);
       }
     } catch (err) {
       console.error('Mashup creation failed:', err);
@@ -575,7 +699,7 @@ export default function SandalwoodStudio() {
           setResult(result);
           setIsCreating(false);
           setCurrentStep(4);
-        });
+        }, handleTaskError);
       }
     } catch (err) {
       console.error('Pallavi medley creation failed:', err);
@@ -608,7 +732,7 @@ export default function SandalwoodStudio() {
           setGroupStyles(styles);
           setIsPlanLoading(false);
           setCurrentStep(2);
-        });
+        }, handleTaskError);
       }
     } catch (err) {
       console.error('Plan generation failed:', err);
@@ -639,7 +763,7 @@ export default function SandalwoodStudio() {
           setResult(result);
           setIsCreating(false);
           setCurrentStep(4);
-        });
+        }, handleTaskError);
       }
     } catch (err) {
       console.error('Create from plan failed:', err);
@@ -665,7 +789,7 @@ export default function SandalwoodStudio() {
             </div>
             <div className="logo-text">
               <h1>Sandalwood Studio</h1>
-              <span className="version-badge">V2.3</span>
+              <span className="version-badge">V3.0</span>
             </div>
           </Motion.div>
           <p className="tagline">Professional Kannada Mashup Creation</p>
@@ -673,8 +797,45 @@ export default function SandalwoodStudio() {
         <div className="header-glow" />
       </Motion.header>
 
+      {/* Mix type chooser (shown until one is picked) */}
+      {mixType === null && (
+        <Motion.div
+          className="mix-type-chooser"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <h2>What would you like to make?</h2>
+          <div className="mix-type-cards">
+            <Motion.button
+              className="mix-type-card glass-card"
+              onClick={() => { setMixType('lab'); setCurrentStep(0); setSelectedTracks([]); }}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+            >
+              <div className="mix-type-icon"><Mic2 size={36} /></div>
+              <h3>Mashup Lab <span className="badge badge-primary">NEW</span></h3>
+              <p>One song's <strong>voice</strong> over another song's <strong>music</strong>.
+                 Like the Cocktail Mashup or a divine devotional blend.</p>
+              <span className="mix-type-hint">Pick 2 songs · 3 styles</span>
+            </Motion.button>
+            <Motion.button
+              className="mix-type-card glass-card"
+              onClick={() => { setMixType('nonstop'); setCurrentStep(0); setSelectedTracks([]); }}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.97 }}
+            >
+              <div className="mix-type-icon"><Disc3 size={36} /></div>
+              <h3>Nonstop Party Mix</h3>
+              <p>Many songs joined smoothly into one continuous DJ mix,
+                 planned automatically by compatibility.</p>
+              <span className="mix-type-hint">Pick 2+ songs · auto-planned</span>
+            </Motion.button>
+          </div>
+        </Motion.div>
+      )}
+
       {/* Step Indicator */}
-      <StepIndicator steps={steps} currentStep={currentStep} />
+      {mixType !== null && <StepIndicator steps={steps} currentStep={currentStep} />}
 
       {/* Main Content */}
       <Motion.main
@@ -684,8 +845,245 @@ export default function SandalwoodStudio() {
         animate="visible"
       >
         <AnimatePresence mode="wait">
+          {/* LAB Step 0: Pick Songs */}
+          {mixType === 'lab' && currentStep === 0 && (
+            <Motion.div
+              key="lab-step-0"
+              className="step-content"
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -50 }}
+            >
+              <div className="panel glass-card panel-wide">
+                <div className="panel-header">
+                  <Music4 size={20} />
+                  <h3>Pick 2 Songs</h3>
+                  <span className="badge badge-primary">{selectedTracks.length}/2 selected</span>
+                </div>
+                <p className="text-muted lab-hint">
+                  First pick = the song whose <strong>voice</strong> you want.
+                  Second pick = the song whose <strong>music</strong> you want.
+                </p>
+
+                <div className="upload-zone">
+                  <input
+                    type="file"
+                    id="lab-file-upload"
+                    multiple
+                    accept="audio/*"
+                    onChange={handleFileUpload}
+                    hidden
+                  />
+                  <label htmlFor="lab-file-upload" className="upload-label">
+                    <Upload size={24} />
+                    <span>Drop files or click to upload</span>
+                  </label>
+                </div>
+
+                <YouTubeImport
+                  url={youtubeUrl}
+                  onUrlChange={setYoutubeUrl}
+                  busy={isDownloading}
+                  onDownload={downloadFromYouTube}
+                />
+
+                <div className="tracks-list">
+                  <AnimatePresence>
+                    {tracks.map(track => {
+                      const roleIndex = selectedTracks.indexOf(track);
+                      return (
+                        <Motion.div
+                          key={track.name}
+                          className={`track-item ${roleIndex >= 0 ? 'selected' : ''}`}
+                          onClick={() => {
+                            if (roleIndex >= 0) {
+                              setSelectedTracks(prev => prev.filter(t => t !== track));
+                            } else {
+                              setSelectedTracks(prev =>
+                                prev.length >= 2 ? [prev[1], track] : [...prev, track]);
+                            }
+                          }}
+                          layout
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          whileHover={{ backgroundColor: 'rgba(255,255,255,0.05)' }}
+                        >
+                          <div className="track-checkbox">
+                            {roleIndex >= 0 && <Check size={14} />}
+                          </div>
+                          <div className="track-details">
+                            <span className="track-name">{track.name}</span>
+                            <span className="track-size">{track.size_mb} MB</span>
+                          </div>
+                          {roleIndex === 0 && (
+                            <span className="badge badge-primary"><Mic2 size={12} /> Voice</span>
+                          )}
+                          {roleIndex === 1 && (
+                            <span className="badge badge-success"><Music4 size={12} /> Music</span>
+                          )}
+                        </Motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
+                </div>
+
+                {selectedTracks.length === 2 && (
+                  <div className="lab-roles-summary">
+                    <span><Mic2 size={14} /> Voice: <strong>{selectedTracks[0].name}</strong></span>
+                    <Motion.button
+                      className="btn btn-sm btn-secondary"
+                      onClick={swapLabRoles}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      <RefreshCw size={14} /> Swap
+                    </Motion.button>
+                    <span><Music4 size={14} /> Music: <strong>{selectedTracks[1].name}</strong></span>
+                  </div>
+                )}
+              </div>
+
+              <div className="step-actions">
+                <Motion.button
+                  className="btn btn-secondary"
+                  onClick={() => { setMixType(null); setSelectedTracks([]); }}
+                  whileHover={{ scale: 1.02 }}
+                >
+                  Back
+                </Motion.button>
+                <Motion.button
+                  className="btn btn-primary btn-lg"
+                  onClick={() => setCurrentStep(1)}
+                  disabled={selectedTracks.length !== 2}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  Continue
+                  <ChevronRight size={18} />
+                </Motion.button>
+              </div>
+            </Motion.div>
+          )}
+
+          {/* LAB Step 1: Style */}
+          {mixType === 'lab' && currentStep === 1 && (
+            <Motion.div
+              key="lab-step-1"
+              className="step-content"
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -50 }}
+            >
+              <div className="panel glass-card panel-wide">
+                <div className="panel-header">
+                  <Sliders size={20} />
+                  <h3>Choose a Style</h3>
+                </div>
+                <div className="lab-style-cards">
+                  {LAB_STYLES.map(style => {
+                    const Icon = style.icon;
+                    return (
+                      <Motion.button
+                        key={style.id}
+                        className={`lab-style-card glass-card ${labStyle === style.id ? 'selected' : ''}`}
+                        onClick={() => setLabStyle(style.id)}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        <Icon size={28} />
+                        <h4>{style.name}</h4>
+                        <p>{style.description}</p>
+                        {labStyle === style.id && (
+                          <span className="badge badge-primary"><Check size={12} /> Selected</span>
+                        )}
+                      </Motion.button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="step-actions">
+                <Motion.button
+                  className="btn btn-secondary"
+                  onClick={() => setCurrentStep(0)}
+                  whileHover={{ scale: 1.02 }}
+                >
+                  Back
+                </Motion.button>
+                <Motion.button
+                  className="btn btn-primary btn-lg"
+                  onClick={() => setCurrentStep(2)}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  Continue
+                  <ChevronRight size={18} />
+                </Motion.button>
+              </div>
+            </Motion.div>
+          )}
+
+          {/* LAB Step 2: Create */}
+          {mixType === 'lab' && currentStep === 2 && (
+            <Motion.div
+              key="lab-step-2"
+              className="step-content"
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -50 }}
+            >
+              <div className="panel glass-card panel-wide">
+                <div className="panel-header">
+                  <Wand2 size={20} />
+                  <h3>Ready to Create</h3>
+                </div>
+                <div className="lab-summary-rows">
+                  <div className="lab-summary-row">
+                    <Mic2 size={16} />
+                    <span>Voice from</span>
+                    <strong>{selectedTracks[0]?.name}</strong>
+                  </div>
+                  <div className="lab-summary-row">
+                    <Music4 size={16} />
+                    <span>Music from</span>
+                    <strong>{selectedTracks[1]?.name}</strong>
+                  </div>
+                  <div className="lab-summary-row">
+                    <Sliders size={16} />
+                    <span>Style</span>
+                    <strong>{LAB_STYLES.find(s => s.id === labStyle)?.name}</strong>
+                  </div>
+                </div>
+                <p className="text-muted lab-hint">
+                  The app will analyze both songs, separate the voice from the music,
+                  match their speed and key, and place the voice on the beat.
+                  This can take a few minutes.
+                </p>
+              </div>
+              <div className="step-actions">
+                <Motion.button
+                  className="btn btn-secondary"
+                  onClick={() => setCurrentStep(1)}
+                  whileHover={{ scale: 1.02 }}
+                >
+                  Back
+                </Motion.button>
+                <Motion.button
+                  className="btn btn-primary btn-lg"
+                  onClick={createLabMashup}
+                  disabled={isCreating}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <Play size={18} />
+                  Create Mashup
+                </Motion.button>
+              </div>
+            </Motion.div>
+          )}
+
           {/* Step 0: Select Tracks */}
-          {currentStep === 0 && (
+          {mixType === 'nonstop' && currentStep === 0 && (
             <Motion.div
               key="step-0"
               className="step-content"
@@ -716,6 +1114,13 @@ export default function SandalwoodStudio() {
                       <span>Drop files or click to upload</span>
                     </label>
                   </div>
+
+                  <YouTubeImport
+                    url={youtubeUrl}
+                    onUrlChange={setYoutubeUrl}
+                    busy={isDownloading}
+                    onDownload={downloadFromYouTube}
+                  />
 
                   <div className="tracks-list">
                     <AnimatePresence>
@@ -787,7 +1192,7 @@ export default function SandalwoodStudio() {
           )}
 
           {/* Step 1: Analyze */}
-          {currentStep === 1 && (
+          {mixType === 'nonstop' && currentStep === 1 && (
             <Motion.div
               key="step-1"
               className="step-content"
@@ -869,7 +1274,7 @@ export default function SandalwoodStudio() {
           )}
 
           {/* Step 2: Review Plan */}
-          {currentStep === 2 && planData && (
+          {mixType === 'nonstop' && currentStep === 2 && planData && (
             <Motion.div
               key="step-2-plan"
               className="step-content"
@@ -968,7 +1373,7 @@ export default function SandalwoodStudio() {
           )}
 
           {/* Step 3: Configure */}
-          {currentStep === 3 && (
+          {mixType === 'nonstop' && currentStep === 3 && (
             <Motion.div
               key="step-2"
               className="step-content"
@@ -1080,7 +1485,7 @@ export default function SandalwoodStudio() {
           )}
 
           {/* Step 4: Results */}
-          {currentStep === 4 && result && (
+          {currentStep === resultsStep && result && (
             <Motion.div
               key="step-4"
               className="step-content"
@@ -1148,10 +1553,22 @@ export default function SandalwoodStudio() {
                         <AudioWaveform size={20} />
                         <div>
                           <span className="stat-label">Format</span>
-                          <span className="stat-value">320kbps MP3</span>
+                          <span className="stat-value">
+                            {result.output_filename?.endsWith('.wav')
+                              ? 'WAV (install ffmpeg for MP3)'
+                              : '320kbps MP3'}
+                          </span>
                         </div>
                       </div>
                     </div>
+
+                    {result.warnings?.length > 0 && (
+                      <div className="result-warnings">
+                        {result.warnings.map((warning, i) => (
+                          <p key={i} className="text-muted">⚠ {warning}</p>
+                        ))}
+                      </div>
+                    )}
 
                     <div className="result-actions">
                       <Motion.a
@@ -1171,12 +1588,15 @@ export default function SandalwoodStudio() {
                   <Motion.button
                     className="btn btn-secondary"
                     onClick={() => {
+                      setMixType(null);
                       setCurrentStep(0);
                       setSelectedTracks([]);
                       setResult(null);
                       setPlanData(null);
                       setPlanId(null);
                       setGroupStyles({});
+                      setLabStyle('divine');
+                      setYoutubeUrl('');
                     }}
                     whileHover={{ scale: 1.02 }}
                   >
